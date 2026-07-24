@@ -57,9 +57,12 @@
   "devDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
     "@types/node": "^24.5.2",
     "esbuild": "^0.28.1",
     "mermaid": "^11.4.1",
+    "semantic-release": "^25.0.8",
     "typebox": "*",
     "typescript": "^5.9.2"
   },
