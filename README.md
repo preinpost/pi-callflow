@@ -46,7 +46,7 @@ cd ~/dev/your-project && pi -e pi-callflow
 Then ask for a flow, either with the `/callflow` command or in plain language:
 
 ```text
-/callflow "show the call flow from the /auth/authorize endpoint"
+/callflow "show the call flow from the /login endpoint"
 #  → agent analyzes the code, then the window opens with the result.
 
 /callflow                      # (no arg) just open an empty viewer
@@ -54,7 +54,7 @@ Then ask for a flow, either with the `/callflow` command or in plain language:
 
 ```text
 # plain language works too — no slash command needed:
-show the call flow from the /auth/authorize endpoint
+show the call flow from the /login endpoint
 ```
 
 In pi the window opens **when the agent finishes** the turn. If the agent calls the tool, the
@@ -92,7 +92,7 @@ command = "pi-callflow-mcp"
 That's it. Then ask the agent in plain language:
 
 ```text
-show the call flow from the /auth/authorize endpoint
+show the call flow from the /login endpoint
 ```
 
 The agent analyzes the code, calls the `render_call_diagram` tool, and the window opens as

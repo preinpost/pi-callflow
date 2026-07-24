@@ -126,7 +126,7 @@ cd ~/dev/pi-callflow && npm install && npm run build
 cd ~/dev/your-project && pi -e ~/dev/pi-callflow
 # in pi:
 /callflow
-"show the call structure starting from the /auth/authorize endpoint"
+"show the call structure starting from the /login endpoint"
 ```
 
 ---
