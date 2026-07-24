@@ -38,7 +38,7 @@ const inputSchema = {
   flowchart: z
     .string()
     .optional()
-    .describe("Optional Mermaid 'flowchart TD' for branch logic; shown in a collapsible section under the sequence."),
+    .describe("Mermaid 'flowchart TD' source for branch/decision logic. Provide it whenever the flow has meaningful branching; it renders in a separate Flowchart tab next to the sequence."),
   steps: z
     .array(z.object(StepShape))
     .describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
@@ -71,10 +71,10 @@ async function main(): Promise<void> {
       title: "Render call diagram",
       description:
         "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a " +
-        "request/endpoint/feature flows through the code. DEFAULT to a SEQUENCE diagram (kind='sequence', " +
-        "Mermaid 'sequenceDiagram') — it shows call ordering. Use kind='flowchart' ONLY when explicitly asked " +
-        "or for pure branching logic. Inspect the actual code first, then call this with a diagram whose " +
-        "every step cites a real file:line.",
+        "request/endpoint/feature flows through the code. ALWAYS fill 'sequence' with a Mermaid 'sequenceDiagram' " +
+        "(call ordering) — it is the default view. ALSO fill 'flowchart' with a Mermaid 'flowchart TD' whenever the " +
+        "flow has branching/decisions — it renders in a separate Flowchart tab. Inspect the actual code first, then " +
+        "call this with a diagram whose every step cites a real file:line.",
       inputSchema,
     },
     async (args) => {

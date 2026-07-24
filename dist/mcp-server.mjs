@@ -31210,7 +31210,7 @@ var StepShape = {
 var inputSchema = {
   title: external_exports.string().describe("Short title, e.g. 'Login \u2192 OTP verification flow'"),
   sequence: external_exports.string().describe("REQUIRED. Mermaid 'sequenceDiagram' source showing call ordering. Must reflect the real code you inspected."),
-  flowchart: external_exports.string().optional().describe("Optional Mermaid 'flowchart TD' for branch logic; shown in a collapsible section under the sequence."),
+  flowchart: external_exports.string().optional().describe("Mermaid 'flowchart TD' source for branch/decision logic. Provide it whenever the flow has meaningful branching; it renders in a separate Flowchart tab next to the sequence."),
   steps: external_exports.array(external_exports.object(StepShape)).describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
   notes: external_exports.string().optional().describe("Optional context: branches, config keys, edge cases")
 };
@@ -31230,7 +31230,7 @@ async function main() {
     "render_call_diagram",
     {
       title: "Render call diagram",
-      description: "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a request/endpoint/feature flows through the code. DEFAULT to a SEQUENCE diagram (kind='sequence', Mermaid 'sequenceDiagram') \u2014 it shows call ordering. Use kind='flowchart' ONLY when explicitly asked or for pure branching logic. Inspect the actual code first, then call this with a diagram whose every step cites a real file:line.",
+      description: "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a request/endpoint/feature flows through the code. ALWAYS fill 'sequence' with a Mermaid 'sequenceDiagram' (call ordering) \u2014 it is the default view. ALSO fill 'flowchart' with a Mermaid 'flowchart TD' whenever the flow has branching/decisions \u2014 it renders in a separate Flowchart tab. Inspect the actual code first, then call this with a diagram whose every step cites a real file:line.",
       inputSchema
     },
     async (args) => {
