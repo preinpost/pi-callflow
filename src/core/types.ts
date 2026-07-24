@@ -33,10 +33,19 @@ export type HostMessage =
   | { type: "empty" }
   | { type: "editors"; list: EditorOption[]; selected: string | null; locked: boolean };
 
+/** A single PNG produced by the webview, ready to be written to disk. */
+export interface PngFile {
+  /** Suggested filename, e.g. "login-sequence.png". */
+  name: string;
+  /** `data:image/png;base64,...` URL. */
+  dataUrl: string;
+}
+
 /** webview -> host */
 export type WindowMessage =
   | { type: "ready" }
   | { type: "open-file"; file: string; line: number }
   | { type: "navigate"; direction: "prev" | "next" }
   | { type: "set-editor"; id: string }
+  | { type: "export-png"; files: PngFile[] }
   | { type: "close" };

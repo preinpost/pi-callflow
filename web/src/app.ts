@@ -32,7 +32,15 @@ declare global {
   }
 }
 
-mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
+// htmlLabels:false forces SVG <text> labels (not foreignObject) so diagrams
+// rasterize cleanly to PNG via canvas.
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "default",
+  securityLevel: "loose",
+  htmlLabels: false,
+  flowchart: { htmlLabels: false },
+});
 
 const $ = (id: string) => document.getElementById(id)!;
 let renderSeq = 0;
@@ -153,6 +161,71 @@ class Stage {
 let seqStage: Stage | null = null;
 let flowStage: Stage | null = null;
 let hasFlow = false;
+let currentDiagram: Diagram | null = null;
+
+/** Turn a title into a filesystem-friendly slug for PNG filenames. */
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return slug || "callflow";
+}
+
+/** Rasterize one stage's SVG to a PNG data URL: white background, 2x scale. */
+async function svgToPng(stage: HTMLElement): Promise<string | null> {
+  const svg = stage.querySelector<SVGSVGElement>(".stage-content svg");
+  if (!svg) return null;
+  const w = parseFloat(svg.getAttribute("width") || "0") || svg.getBoundingClientRect().width;
+  const h = parseFloat(svg.getAttribute("height") || "0") || svg.getBoundingClientRect().height;
+  if (!w || !h) return null;
+  const scale = 2;
+  const xml = new XMLSerializer().serializeToString(svg);
+  const src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(xml)))}`;
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("svg load failed"));
+    img.src = src;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(w * scale);
+  canvas.height = Math.ceil(h * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
+/** Collect PNGs for every rendered diagram (sequence always, flowchart when present). */
+async function exportPng(): Promise<void> {
+  if (!currentDiagram) return;
+  const base = slugify(currentDiagram.title);
+  const files: { name: string; dataUrl: string }[] = [];
+  const seq = await svgToPng($("seq-stage"));
+  if (seq) files.push({ name: `${base}-sequence.png`, dataUrl: seq });
+  if (hasFlow) {
+    const flow = await svgToPng($("flow-stage"));
+    if (flow) files.push({ name: `${base}-flowchart.png`, dataUrl: flow });
+  }
+  if (files.length === 0) return;
+  if (window.glimpse) {
+    sendHost({ type: "export-png", files });
+  } else {
+    // Browser fallback: no host channel — trigger direct downloads.
+    for (const f of files) {
+      const a = document.createElement("a");
+      a.href = f.dataUrl;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }
+}
 
 function setActiveTab(tab: "seq" | "flow"): void {
   if (tab === "flow" && !hasFlow) tab = "seq";
@@ -213,6 +286,7 @@ function renderErrorHtml(error: unknown, source: string): string {
 }
 
 async function renderDiagram(diagram: Diagram): Promise<void> {
+  currentDiagram = diagram;
   document.body.classList.add("has-diagram");
   $("title").textContent = diagram.title;
   const kinds = diagram.flowchart ? "sequence + flowchart" : "sequence";
@@ -293,6 +367,7 @@ function renderMarkdown(src: string): string {
 }
 
 function showEmpty(): void {
+  currentDiagram = null;
   document.body.classList.remove("has-diagram");
   ($("steps")).innerHTML = "";
   ($("notes")).textContent = "";
@@ -348,6 +423,7 @@ window.__callflowReceive = (message: HostMessage) => {
 $("prev").addEventListener("click", () => sendHost({ type: "navigate", direction: "prev" }));
 $("next").addEventListener("click", () => sendHost({ type: "navigate", direction: "next" }));
 $("close").addEventListener("click", () => sendHost({ type: "close" }));
+$("export-png").addEventListener("click", () => { void exportPng(); });
 ($("editor") as HTMLSelectElement).addEventListener("change", (ev) => {
   sendHost({ type: "set-editor", id: (ev.target as HTMLSelectElement).value });
 });

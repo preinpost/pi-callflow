@@ -136,8 +136,12 @@ cd ~/dev/your-project && pi -e ~/dev/pi-callflow
 **Deferred from MVP (design agreed, not yet built):**
 - [x] Sequence **and** flowchart in one payload (`sequence` + optional `flowchart`), shown as **tabs** (Sequence default). **Done.**
 - [x] Zoom/pan per diagram (wheel-at-cursor, drag, buttons, double-click fit). **Done.**
-- [ ] Export buttons: **Copy Mermaid** / **Export Markdown** (steps table incl. file:line) for
-      pasting into Confluence.
+- [x] Export: **⤓ PNG** top-bar button — rasterizes every rendered diagram (sequence always,
+      flowchart when present) to PNG (white background, 2x scale, `htmlLabels:false` so labels
+      rasterize) and saves to the user's **Downloads** dir (`CALLFLOW_PNG_DIR` / `XDG_DOWNLOAD_DIR`
+      override; `<title-slug>-sequence.png` / `-flowchart.png`, `-1`/`-2` on collision). Browser
+      fallback uses `<a download>`. **Done.** (Copy Mermaid / Export Markdown dropped in favour of PNG.)
+- [x] Viewer switched to a **light theme** (Mermaid `theme:"default"`, light CSS palette). **Done.**
 - [x] In-window editor selector — top-bar dropdown listing only editors found on PATH (`command -v` / `where`): VS Code, Cursor, IntelliJ, Sublime. `CALLFLOW_OPEN_CMD` overrides and locks it. **Done.** (Not yet persisted across sessions — defaults to first available each open.)
 - [x] Diagram history / back-forward within the window (prev/next + counter, browser-style truncation). **Done.**
 

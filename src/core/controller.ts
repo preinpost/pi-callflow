@@ -1,10 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { open, type GlimpseWindow } from "glimpseui";
 import { loadCallflowHtml } from "./ui.js";
-import type { Diagram, EditorOption, HostMessage, WindowMessage } from "./types.js";
+import type { Diagram, EditorOption, HostMessage, PngFile, WindowMessage } from "./types.js";
 
 interface EditorSpec {
   id: string;
@@ -199,6 +199,10 @@ export class CallflowController {
       this.openInEditor(message.file, message.line);
       return;
     }
+    if (message.type === "export-png") {
+      this.savePngs(message.files);
+      return;
+    }
     if (message.type === "close") {
       // Let the native 'closed' event drive disposal/onClosed cleanup.
       try { this.window?.close(); } catch { /* ignore */ }
@@ -250,6 +254,50 @@ export class CallflowController {
     } catch (error) {
       this.notify(`Could not open editor: ${error instanceof Error ? error.message : String(error)}`, "warning");
     }
+  }
+
+  /** Resolve the user's Downloads directory (honours CALLFLOW_PNG_DIR, then XDG). */
+  private downloadsDir(): string {
+    const override = process.env.CALLFLOW_PNG_DIR?.trim();
+    if (override) return override;
+    const xdg = process.env.XDG_DOWNLOAD_DIR?.trim();
+    if (xdg) return xdg;
+    return join(homedir(), "Downloads");
+  }
+
+  /** Return `dir/name`, inserting -1, -2, … before the extension on collisions. */
+  private uniquePath(dir: string, name: string): string {
+    const dot = name.lastIndexOf(".");
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : "";
+    let candidate = join(dir, name);
+    let n = 0;
+    while (existsSync(candidate)) {
+      n += 1;
+      candidate = join(dir, `${stem}-${n}${ext}`);
+    }
+    return candidate;
+  }
+
+  /** Decode the base64 PNGs from the webview and write them to the Downloads dir. */
+  private savePngs(files: PngFile[]): void {
+    if (!files || files.length === 0) return;
+    const dir = this.downloadsDir();
+    const saved: string[] = [];
+    try {
+      for (const f of files) {
+        const comma = f.dataUrl.indexOf(",");
+        const base64 = comma >= 0 ? f.dataUrl.slice(comma + 1) : f.dataUrl;
+        const path = this.uniquePath(dir, f.name);
+        writeFileSync(path, Buffer.from(base64, "base64"));
+        saved.push(path);
+      }
+    } catch (error) {
+      this.notify(`Could not save PNG: ${error instanceof Error ? error.message : String(error)}`, "error");
+      return;
+    }
+    const label = saved.length === 1 ? saved[0] : `${saved.length} PNGs to ${dir}`;
+    this.notify(`Saved ${label}`, "info");
   }
 
   private openBrowserFallback(): void {
