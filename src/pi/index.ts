@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { CallflowController, type Notify } from "../core/controller.js";
 import type { CallStep, Diagram } from "../core/types.js";
 
-const MERMAID_SPECIAL_RE = /[()<>]/;
+const MERMAID_SPECIAL_RE = /[()<>;]/;
 
 function leadingSpaces(line: string): string {
   const match = line.match(/^\s*/);
@@ -16,15 +16,26 @@ function needsMermaidQuote(value: string): boolean {
   return MERMAID_SPECIAL_RE.test(value);
 }
 
+function escapeMermaidSemicolons(value: string): string {
+  // Mermaid uses ';' as a statement separator in sequence messages, even inside quoted text.
+  // Use the Mermaid HTML-entity form '#59;' for a literal semicolon.
+  // Avoid double-escaping an already-formed entity like '#59;' or '&#59;'.
+  return value.replace(/(?<!&#?\d+);/g, "#59;");
+}
+
 function mermaidQuote(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed;
-  // Escape inner double quotes so they do not break the quoted Mermaid string.
-  return `"${value.replace(/"/g, "#quot;")}"`;
+  // Escape inner double quotes and semicolons so they do not break the quoted Mermaid string.
+  const escaped = value
+    .replace(/"/g, "#quot;")
+    .replace(/(?<!&#?\d+);/g, "#59;");
+  return `"${escaped}"`;
 }
 
 /** Make a Mermaid sequenceDiagram source safe for the parser.
- *  Participant aliases and message texts that contain parentheses or angle brackets
+ *  Participant aliases and message texts that contain parentheses, angle brackets,
+ *  or semicolons
  *  are wrapped in double quotes, which Mermaid treats as literal strings.
  */
 function sanitizeMermaidSequence(sequence: string): string {
@@ -147,7 +158,7 @@ export default function callflow(pi: ExtensionAPI) {
       "When the user asks to see a call/execution structure, inspect the real code first, then call render_call_diagram.",
       "Always provide 'sequence' (call ordering); also provide 'flowchart' when the flow branches meaningfully.",
       "Every step in render_call_diagram MUST include the actual file and line you read; never fabricate sources.",
-      "If a participant label or message text contains parentheses or angle brackets, wrap it in double quotes, e.g. Bot->Bot: \"answerCallbackQuery (early, <15s)\".",
+      "If a participant label or message text contains parentheses, angle brackets, or semicolons, wrap it in double quotes and escape semicolons as '#59;', e.g. Bot->Bot: \"a; b\".",
     ],
     parameters: RenderParams,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
