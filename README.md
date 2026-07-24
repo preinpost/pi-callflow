@@ -42,6 +42,9 @@ package, or clone the repo if you prefer a local checkout):
 ```sh
 cd ~/dev/your-project && pi -e pi-callflow
 ```
+
+Then ask for a flow, either with the `/callflow` command or in plain language:
+
 ```text
 /callflow "show the call flow from the /auth/authorize endpoint"
 #  → agent analyzes the code, then the window opens with the result.
@@ -49,8 +52,13 @@ cd ~/dev/your-project && pi -e pi-callflow
 /callflow                      # (no arg) just open an empty viewer
 ```
 
-In pi the window opens **when the agent finishes** the turn. Asking in plain language also
-works — if the agent calls the tool, the window still opens at the end of the turn.
+```text
+# plain language works too — no slash command needed:
+show the call flow from the /auth/authorize endpoint
+```
+
+In pi the window opens **when the agent finishes** the turn. If the agent calls the tool, the
+window opens at the end of the turn.
 
 ### Option B — with Claude Code / Codex (MCP)
 
@@ -81,8 +89,14 @@ claude mcp add callflow -- pi-callflow-mcp
 command = "pi-callflow-mcp"
 ```
 
-That's it. Then ask the agent *"show the call flow from /auth/authorize"* and the window
-opens as soon as the tool is called.
+That's it. Then ask the agent in plain language:
+
+```text
+show the call flow from the /auth/authorize endpoint
+```
+
+The agent analyzes the code, calls the `render_call_diagram` tool, and the window opens as
+soon as the tool is called.
 
 <details>
 <summary>From a local clone (absolute path)</summary>
