@@ -4,10 +4,50 @@ import { z } from "zod";
 import { CallflowController, type Notify } from "../core/controller.js";
 import type { CallStep, Diagram } from "../core/types.js";
 
+// Injected at build time from package.json (see scripts/build-mcp.mjs).
+declare const __PKG_NAME__: string;
+declare const __PKG_VERSION__: string;
+const PKG_NAME = typeof __PKG_NAME__ === "string" ? __PKG_NAME__ : "pi-callflow";
+const PKG_VERSION = typeof __PKG_VERSION__ === "string" ? __PKG_VERSION__ : "0.0.0";
+
 // IMPORTANT: stdout is the MCP protocol channel. Never write logs to stdout.
 const notify: Notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}\n`);
 };
+
+// Best-effort update check. Never blocks startup, never throws, stderr only.
+// Disable with CALLFLOW_NO_UPDATE_CHECK=1.
+function cmpSemver(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  }
+  return 0;
+}
+
+async function checkForUpdate(): Promise<void> {
+  if (process.env.CALLFLOW_NO_UPDATE_CHECK === "1") return;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://registry.npmjs.org/${PKG_NAME}/latest`, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return;
+    const latest = (await res.json())?.version;
+    if (typeof latest === "string" && cmpSemver(latest, PKG_VERSION) > 0) {
+      notify(
+        `Update available: ${PKG_NAME} ${PKG_VERSION} → ${latest}. ` +
+          `Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}-mcp@latest' in your MCP config to always launch the newest.`,
+        "info",
+      );
+    }
+  } catch {
+    /* offline / air-gapped / registry blocked — ignore */
+  }
+}
 
 // The MCP server owns one persistent viewer for its lifetime.
 const cwd = process.env.CALLFLOW_CWD || process.cwd();
@@ -63,7 +103,7 @@ function toDiagram(args: {
 }
 
 async function main(): Promise<void> {
-  const server = new McpServer({ name: "pi-callflow", version: "0.1.0" });
+  const server = new McpServer({ name: PKG_NAME, version: PKG_VERSION });
 
   server.registerTool(
     "render_call_diagram",
@@ -111,7 +151,8 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  notify("pi-callflow MCP server ready (stdio).", "info");
+  notify(`pi-callflow MCP server ready (stdio), v${PKG_VERSION}.`, "info");
+  void checkForUpdate();
 }
 
 main().catch((error) => {

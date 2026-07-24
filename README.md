@@ -70,24 +70,30 @@ identical `render_call_diagram` tool and native window. Install once — this pu
 npm i -g pi-callflow
 ```
 
-Or skip the install entirely and let the agent run it via `npx`:
+Or skip the install entirely and let the agent run it via `npx` — this **auto-updates**, since
+`@latest` re-fetches the newest published version every time the MCP server launches:
 
 ```sh
-npx -y pi-callflow-mcp
+npx -y pi-callflow-mcp@latest
 ```
 
-**Claude Code** — one command:
+**Claude Code** — one command (auto-updating):
 
 ```sh
-claude mcp add callflow -- pi-callflow-mcp
+claude mcp add callflow -- npx -y pi-callflow-mcp@latest
 ```
 
-**Codex** — add to `~/.codex/config.toml`:
+**Codex** — add to `~/.codex/config.toml` (auto-updating):
 
 ```toml
 [mcp_servers.callflow]
-command = "pi-callflow-mcp"
+command = "npx"
+args = ["-y", "pi-callflow-mcp@latest"]
 ```
+
+(Prefer a pinned global binary instead? Use `command = "pi-callflow-mcp"` after
+`npm i -g pi-callflow`. On startup the server checks the registry once and logs a one-line
+notice to stderr when a newer version is out; set `CALLFLOW_NO_UPDATE_CHECK=1` to silence it.)
 
 That's it. Then ask the agent in plain language:
 

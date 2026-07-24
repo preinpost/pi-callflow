@@ -31185,10 +31185,40 @@ var CallflowController = class {
 };
 
 // src/mcp/server.ts
+var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
+var PKG_VERSION = true ? "0.1.1" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);
 };
+function cmpSemver(a, b) {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  }
+  return 0;
+}
+async function checkForUpdate() {
+  if (process.env.CALLFLOW_NO_UPDATE_CHECK === "1") return;
+  try {
+    const controller2 = new AbortController();
+    const timer = setTimeout(() => controller2.abort(), 2500);
+    const res = await fetch(`https://registry.npmjs.org/${PKG_NAME}/latest`, {
+      signal: controller2.signal,
+      headers: { accept: "application/json" }
+    }).finally(() => clearTimeout(timer));
+    if (!res.ok) return;
+    const latest = (await res.json())?.version;
+    if (typeof latest === "string" && cmpSemver(latest, PKG_VERSION) > 0) {
+      notify(
+        `Update available: ${PKG_NAME} ${PKG_VERSION} \u2192 ${latest}. Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}-mcp@latest' in your MCP config to always launch the newest.`,
+        "info"
+      );
+    }
+  } catch {
+  }
+}
 var cwd = process.env.CALLFLOW_CWD || process.cwd();
 var controller = null;
 var getController = () => {
@@ -31225,7 +31255,7 @@ function toDiagram(args) {
   };
 }
 async function main() {
-  const server = new McpServer({ name: "pi-callflow", version: "0.1.0" });
+  const server = new McpServer({ name: PKG_NAME, version: PKG_VERSION });
   server.registerTool(
     "render_call_diagram",
     {
@@ -31267,7 +31297,8 @@ ${stepLines}`
   process.on("SIGTERM", shutdown);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  notify("pi-callflow MCP server ready (stdio).", "info");
+  notify(`pi-callflow MCP server ready (stdio), v${PKG_VERSION}.`, "info");
+  void checkForUpdate();
 }
 main().catch((error51) => {
   process.stderr.write(`[callflow:fatal] ${error51 instanceof Error ? error51.stack ?? error51.message : String(error51)}
