@@ -32,6 +32,7 @@
     "build:web": "node scripts/build-web.mjs",
     "build:mcp": "node scripts/build-mcp.mjs",
     "check": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
     "build": "npm run build:web && npm run build:mcp && npm run check",
     "prepublishOnly": "npm run build:web && npm run build:mcp",
     "smoke": "node scripts/smoke.mjs",

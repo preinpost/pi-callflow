@@ -174,14 +174,41 @@ function updateNav(index: number, total: number): void {
 
 async function renderInto(stage: Stage, code: string): Promise<void> {
   const id = `callflow-${++renderSeq}`;
+  const source = code.trim();
   try {
-    const { svg } = await mermaid.render(id, code.trim());
+    const { svg } = await mermaid.render(id, source);
     stage.setSvg(svg);
   } catch (error) {
-    stage.setSvg(
-      `<pre style="color:#ff8080;white-space:pre-wrap;font:12px monospace;padding:12px;margin:0">Mermaid render error:\n${escapeHtml(String(error))}\n\n${escapeHtml(code.trim())}</pre>`,
-    );
+    stage.setSvg(renderErrorHtml(error, source));
   }
+}
+
+/** Friendly fallback when Mermaid cannot parse the source: explain, point to the
+ *  Steps list, and show the source with the offending line marked (collapsible). */
+function renderErrorHtml(error: unknown, source: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const lineMatch = message.match(/line (\d+)/i);
+  const badLine = lineMatch ? parseInt(lineMatch[1], 10) : null;
+  const numbered = source
+    .split("\n")
+    .map((text, i) => {
+      const n = i + 1;
+      const bad = badLine === n;
+      const gutter = `${bad ? "\u25b6" : "\u00a0"} ${String(n).padStart(3, "\u00a0")}`;
+      return `<span class="eln${bad ? " bad" : ""}">${gutter} \u2502 ${escapeHtml(text) || "\u00a0"}</span>`;
+    })
+    .join("\n");
+  return (
+    `<div class="render-error">` +
+    `<div class="render-error__head">Diagram could not be rendered</div>` +
+    `<div class="render-error__hint">The Steps list on the right is still accurate \u2014 every step is grounded to a real file:line.</div>` +
+    `<div class="render-error__msg">${escapeHtml(message)}</div>` +
+    `<details class="render-error__src"${badLine ? " open" : ""}>` +
+    `<summary>Mermaid source${badLine ? ` (error near line ${badLine})` : ""}</summary>` +
+    `<pre>${numbered}</pre>` +
+    `</details>` +
+    `</div>`
+  );
 }
 
 async function renderDiagram(diagram: Diagram): Promise<void> {

@@ -31219,7 +31219,7 @@ var CallflowController = class {
 
 // src/core/mermaid.ts
 function escapeMermaidText(value) {
-  return value.replace(/"/g, "#quot;").replace(/(?<!&#?\d+);/g, "#59;");
+  return value.replace(/"/g, "#quot;").replace(/((?:&#?|#)[a-zA-Z0-9]+;)|;/g, (_match, entity) => entity ?? "#59;");
 }
 function mermaidQuoted(value) {
   return `"${escapeMermaidText(value)}"`;

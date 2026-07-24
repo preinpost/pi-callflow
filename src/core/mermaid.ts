@@ -85,11 +85,13 @@ export interface FlowchartInput {
 // Shared escaping
 // ---------------------------------------------------------------------------
 
-/** Characters that break Mermaid parsing, even inside quoted text. */
+/** Characters that break Mermaid parsing, even inside quoted text.
+ *  Double quotes become '#quot;' and bare semicolons become '#59;', while any
+ *  existing entity terminator (e.g. '#59;', '#quot;', '&lt;', '&#38;') is left intact. */
 function escapeMermaidText(value: string): string {
   return value
     .replace(/"/g, "#quot;")
-    .replace(/(?<!&#?\d+);/g, "#59;");
+    .replace(/((?:&#?|#)[a-zA-Z0-9]+;)|;/g, (_match, entity) => entity ?? "#59;");
 }
 
 function mermaidQuoted(value: string): string {
