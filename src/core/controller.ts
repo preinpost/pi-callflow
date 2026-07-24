@@ -1,0 +1,238 @@
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { open, type GlimpseWindow } from "glimpseui";
+import { loadCallflowHtml } from "./ui.js";
+import type { Diagram, EditorOption, HostMessage, WindowMessage } from "./types.js";
+
+interface EditorSpec {
+  id: string;
+  label: string;
+  cmd: string;
+  args: (file: string, line: number) => string[];
+}
+
+/** Known editors. Only those found on PATH are offered to the user. */
+const EDITORS: EditorSpec[] = [
+  { id: "code", label: "VS Code", cmd: "code", args: (f, l) => ["-g", `${f}:${l}`] },
+  { id: "cursor", label: "Cursor", cmd: "cursor", args: (f, l) => ["-g", `${f}:${l}`] },
+  { id: "idea", label: "IntelliJ IDEA", cmd: "idea", args: (f, l) => ["--line", String(l), f] },
+  { id: "subl", label: "Sublime", cmd: "subl", args: (f, l) => [`${f}:${l}`] },
+];
+
+/** True if `cmd` resolves on PATH (uses `command -v`, or `where` on Windows). */
+function isOnPath(cmd: string): boolean {
+  try {
+    const probe =
+      process.platform === "win32"
+        ? spawnSync("where", [cmd], { stdio: "ignore" })
+        : spawnSync("sh", ["-c", `command -v ${cmd}`], { stdio: "ignore" });
+    return probe.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function detectEditors(): EditorSpec[] {
+  return EDITORS.filter((e) => isOnPath(e.cmd));
+}
+
+export type Notify = (message: string, level: "info" | "warning" | "error") => void;
+
+function escapeInline(value: string): string {
+  return value.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+}
+
+function parseMessage(value: unknown): WindowMessage | null {
+  if (value == null || typeof value !== "object" || typeof (value as { type?: unknown }).type !== "string") return null;
+  return value as WindowMessage;
+}
+
+/**
+ * Owns exactly one live viewer surface for the session (Q7: server-per-window).
+ * Prefers a native Glimpse window; falls back to the system browser so a missing
+ * native toolchain never yields a blank/absent view.
+ */
+export class CallflowController {
+  private window: GlimpseWindow | null = null;
+  private history: Diagram[] = [];
+  private cursor = -1;
+  private usingBrowserFallback = false;
+
+  private readonly available: EditorSpec[] = detectEditors();
+  private selectedEditor: string | null = this.available[0]?.id ?? null;
+
+  private get current(): Diagram | null {
+    return this.cursor >= 0 && this.cursor < this.history.length ? this.history[this.cursor] : null;
+  }
+
+  /** CALLFLOW_OPEN_CMD overrides the picker; when set, the UI selector is locked. */
+  private get envOverride(): string | undefined {
+    const t = process.env.CALLFLOW_OPEN_CMD;
+    return t && t.includes("{file}") ? t : undefined;
+  }
+
+  constructor(
+    private readonly cwd: string,
+    private readonly notify: Notify,
+    private readonly onClosed: () => void,
+  ) {}
+
+  get isOpen(): boolean {
+    return this.window != null || this.usingBrowserFallback;
+  }
+
+  /** Open the viewer (or bring it forward). Never throws; falls back to browser. */
+  ensureOpen(): void {
+    if (this.window != null) {
+      try { this.window.show({ title: "Call Flow" }); } catch { /* ignore */ }
+      return;
+    }
+    try {
+      const window = open(loadCallflowHtml(), { width: 1280, height: 900, title: "Call Flow" });
+      this.window = window;
+      window.on("message", (value) => {
+        const message = parseMessage(value);
+        if (message != null) this.handleMessage(message);
+      });
+      window.on("closed", () => this.disposeWindow(window));
+      window.on("error", (error) => {
+        this.notify(`Call Flow window error: ${error.message}`, "warning");
+        this.disposeWindow(window);
+      });
+    } catch (error) {
+      this.notify(
+        `Native window unavailable (${error instanceof Error ? error.message : String(error)}); using browser fallback.`,
+        "warning",
+      );
+      this.openBrowserFallback();
+    }
+  }
+
+  /** Push a diagram to the viewer (browser-style history: truncates any forward entries). */
+  render(diagram: Diagram): void {
+    if (this.cursor < this.history.length - 1) {
+      this.history = this.history.slice(0, this.cursor + 1);
+    }
+    this.history.push(diagram);
+    this.cursor = this.history.length - 1;
+    if (!this.isOpen) this.ensureOpen();
+    if (this.window != null) {
+      this.sendCurrent();
+    } else {
+      // Browser fallback is static; re-open with the fresh diagram baked in.
+      this.openBrowserFallback();
+    }
+  }
+
+  close(): void {
+    const window = this.window;
+    this.window = null;
+    this.usingBrowserFallback = false;
+    this.history = [];
+    this.cursor = -1;
+    try { window?.close(); } catch { /* ignore */ }
+  }
+
+  private handleMessage(message: WindowMessage): void {
+    if (message.type === "ready") {
+      this.sendEditors();
+      this.sendCurrent();
+      return;
+    }
+    if (message.type === "set-editor") {
+      if (this.available.some((e) => e.id === message.id)) this.selectedEditor = message.id;
+      return;
+    }
+    if (message.type === "navigate") {
+      const next = this.cursor + (message.direction === "next" ? 1 : -1);
+      if (next < 0 || next >= this.history.length) return;
+      this.cursor = next;
+      this.sendCurrent();
+      return;
+    }
+    if (message.type === "open-file") {
+      this.openInEditor(message.file, message.line);
+      return;
+    }
+    if (message.type === "close") {
+      // Let the native 'closed' event drive disposal/onClosed cleanup.
+      try { this.window?.close(); } catch { /* ignore */ }
+    }
+  }
+
+  private sendEditors(): void {
+    const list: EditorOption[] = this.available.map((e) => ({ id: e.id, label: e.label }));
+    this.send({ type: "editors", list, selected: this.selectedEditor, locked: this.envOverride != null });
+  }
+
+  private sendCurrent(): void {
+    const diagram = this.current;
+    if (diagram == null) this.send({ type: "empty" });
+    else this.send({ type: "diagram", diagram, index: this.cursor, total: this.history.length });
+  }
+
+  private send(message: HostMessage): void {
+    if (this.window == null) return;
+    const payload = escapeInline(JSON.stringify(message));
+    try { this.window.send(`window.__callflowReceive(${payload})`); } catch { /* ignore */ }
+  }
+
+  /** Bonus over MVP: jump to code. Editor is configurable via CALLFLOW_OPEN_CMD. */
+  private openInEditor(file: string, line: number): void {
+    const absolute = file.startsWith("/") ? file : join(this.cwd, file);
+    let cmd: string;
+    let args: string[];
+    const override = this.envOverride;
+    if (override) {
+      const filled = override.replace(/\{file\}/g, absolute).replace(/\{line\}/g, String(line));
+      const parts = filled.split(/\s+/).filter(Boolean);
+      cmd = parts[0];
+      args = parts.slice(1);
+    } else {
+      const editor = EDITORS.find((e) => e.id === this.selectedEditor && this.available.some((a) => a.id === e.id));
+      if (editor == null) {
+        this.notify(
+          "No editor available to open the file. Install `code`/`idea` or set CALLFLOW_OPEN_CMD.",
+          "warning",
+        );
+        return;
+      }
+      cmd = editor.cmd;
+      args = editor.args(absolute, line);
+    }
+    try {
+      spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+    } catch (error) {
+      this.notify(`Could not open editor: ${error instanceof Error ? error.message : String(error)}`, "warning");
+    }
+  }
+
+  private openBrowserFallback(): void {
+    try {
+      const html = this.injectDiagram(loadCallflowHtml(), this.current);
+      const dir = mkdtempSync(join(tmpdir(), "pi-callflow-"));
+      const file = join(dir, "callflow.html");
+      writeFileSync(file, html, "utf8");
+      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      spawn(opener, [file], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
+      this.usingBrowserFallback = true;
+    } catch (error) {
+      this.notify(`Browser fallback failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+    }
+  }
+
+  /** For the static browser fallback: bake the current diagram into the HTML. */
+  private injectDiagram(html: string, diagram: Diagram | null): string {
+    const json = diagram ? JSON.stringify(diagram) : "null";
+    const boot = `<script>window.__CALLFLOW_BOOT__=${escapeInline(json)};</script>`;
+    return html.replace("</head>", `${boot}</head>`);
+  }
+
+  private disposeWindow(window: GlimpseWindow): void {
+    if (this.window !== window) return;
+    this.window = null;
+    this.onClosed();
+  }
+}

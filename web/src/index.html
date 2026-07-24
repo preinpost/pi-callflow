@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Call Flow</title>
+    <style>__APP_STYLES_BASE64__</style>
+  </head>
+  <body>
+    <header id="topbar">
+      <div id="nav">
+        <button id="prev" title="Previous diagram" disabled>‹</button>
+        <span id="counter">0 / 0</span>
+        <button id="next" title="Next diagram" disabled>›</button>
+      </div>
+      <div id="title">Call Flow</div>
+      <div id="meta"></div>
+      <label id="editor-wrap" title="Editor used when you click a step">
+        <span>open in</span>
+        <select id="editor"></select>
+      </label>
+      <button id="close" title="Close window">✕</button>
+    </header>
+    <main>
+      <section id="diagram-pane">
+        <div id="tabs">
+          <button class="tab active" data-tab="seq">Sequence</button>
+          <button class="tab" data-tab="flow">Flowchart</button>
+        </div>
+        <div class="stage" id="seq-stage" data-panel="seq">
+          <div class="stage-head">
+            <div class="zoom">
+              <button data-act="out" title="Zoom out">−</button>
+              <button data-act="reset" title="Reset (or double-click)">⌗</button>
+              <button data-act="in" title="Zoom in">+</button>
+            </div>
+          </div>
+          <div class="stage-viewport"><div class="stage-content"></div></div>
+        </div>
+        <div class="stage" id="flow-stage" data-panel="flow" hidden>
+          <div class="stage-head">
+            <div class="zoom">
+              <button data-act="out" title="Zoom out">−</button>
+              <button data-act="reset" title="Reset (or double-click)">⌗</button>
+              <button data-act="in" title="Zoom in">+</button>
+            </div>
+          </div>
+          <div class="stage-viewport"><div class="stage-content"></div></div>
+        </div>
+      </section>
+      <aside id="steps-pane">
+        <div class="pane-title">Steps <span class="hint">(click → open in editor)</span></div>
+        <ol id="steps"></ol>
+        <div id="notes"></div>
+      </aside>
+    </main>
+    <div id="empty">Ask the agent to show a call structure, e.g. “show the call flow starting from login”.</div>
+    <script>__APP_SOURCE_BASE64__</script>
+  </body>
+</html>

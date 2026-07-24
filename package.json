@@ -1,0 +1,54 @@
+{
+  "name": "pi-callflow",
+  "version": "0.1.0",
+  "description": "On-demand call-structure viewer for pi: ask the agent to show a call flow, get a live Mermaid sequence/flowchart in a native Glimpse window with file:line grounding.",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "src",
+    "web/dist",
+    "dist",
+    "README.md",
+    "HANDOFF.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "pi-callflow-mcp": "./dist/mcp-server.mjs"
+  },
+  "pi": {
+    "extensions": [
+      "./src/pi/index.ts"
+    ]
+  },
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "build:mcp": "node scripts/build-mcp.mjs",
+    "check": "tsc --noEmit",
+    "build": "npm run build:web && npm run build:mcp && npm run check",
+    "prepare": "npm run build:web && npm run build:mcp",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "glimpseui": "^0.8.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^24.5.2",
+    "esbuild": "^0.28.1",
+    "mermaid": "^11.4.1",
+    "typebox": "*",
+    "typescript": "^5.9.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "glimpseui@0.8.1": true,
+    "@modelcontextprotocol/sdk@1.29.0": true
+  }
+}
