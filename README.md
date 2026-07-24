@@ -30,20 +30,31 @@ One package, two ways to run it. Pick whichever agent you use.
 
 ### Option A — with pi (first-class)
 
-Install in one line (prebuilt viewer + MCP server ship in the package — no local build):
+Install it as a pi package — this registers the `/callflow` command and the extension in
+**every project** (prebuilt viewer ships in the package, no local build):
 
 ```sh
-npm i -g pi-callflow
+pi install npm:pi-callflow
 ```
 
-Load the extension in your project and ask for a flow (point `-e` at the globally installed
-package, or clone the repo if you prefer a local checkout):
+<details>
+<summary>Other ways to load it</summary>
 
 ```sh
-cd ~/dev/your-project && pi -e pi-callflow
+pi install -l npm:pi-callflow      # project-only (writes .pi/settings.json, shareable)
+pi -e npm:pi-callflow              # one-off for a single session, no install
+pi update npm:pi-callflow          # update to the latest published version
+pi update --all                    # update pi + all installed packages
+pi remove npm:pi-callflow          # uninstall
 ```
+</details>
 
-Then ask for a flow, either with the `/callflow` command or in plain language:
+Then open pi in your project and ask for a flow, either with the `/callflow` command or in
+plain language:
+
+```sh
+cd ~/dev/your-project && pi
+```
 
 ```text
 /callflow "show the call flow from the /login endpoint"

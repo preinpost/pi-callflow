@@ -31186,7 +31186,7 @@ var CallflowController = class {
 
 // src/mcp/server.ts
 var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
-var PKG_VERSION = true ? "0.1.1" : "0.0.0";
+var PKG_VERSION = true ? "0.1.2" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);
