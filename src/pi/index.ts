@@ -3,6 +3,64 @@ import { Type } from "typebox";
 import { CallflowController, type Notify } from "../core/controller.js";
 import type { CallStep, Diagram } from "../core/types.js";
 
+const MERMAID_SPECIAL_RE = /[()<>]/;
+
+function leadingSpaces(line: string): string {
+  const match = line.match(/^\s*/);
+  return match ? match[0] : "";
+}
+
+function needsMermaidQuote(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return false;
+  return MERMAID_SPECIAL_RE.test(value);
+}
+
+function mermaidQuote(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed;
+  // Escape inner double quotes so they do not break the quoted Mermaid string.
+  return `"${value.replace(/"/g, "#quot;")}"`;
+}
+
+/** Make a Mermaid sequenceDiagram source safe for the parser.
+ *  Participant aliases and message texts that contain parentheses or angle brackets
+ *  are wrapped in double quotes, which Mermaid treats as literal strings.
+ */
+function sanitizeMermaidSequence(sequence: string): string {
+  return sequence
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+
+      // Participant aliases: participant ID as Label
+      const participantMatch = trimmed.match(/^participant\s+(\S+)\s+as\s+(.+)$/i);
+      if (participantMatch) {
+        const id = participantMatch[1];
+        const label = participantMatch[2].trim();
+        if (needsMermaidQuote(label)) {
+          return `${leadingSpaces(line)}participant ${id} as ${mermaidQuote(label)}`;
+        }
+        return line;
+      }
+
+      // Message lines: A->B: text
+      const msgMatch = trimmed.match(/^(\S+?)([-.=~]+(?:>>?>?)?[xox]?)(\S+?)\s*:\s+(.*)$/);
+      if (msgMatch) {
+        const from = msgMatch[1];
+        const arrow = msgMatch[2];
+        const to = msgMatch[3];
+        const text = msgMatch[4].trim();
+        if (needsMermaidQuote(text)) {
+          return `${leadingSpaces(line)}${from}${arrow}${to}: ${mermaidQuote(text)}`;
+        }
+      }
+
+      return line;
+    })
+    .join("\n");
+}
+
 const StepSchema = Type.Object({
   from: Type.String({ description: "Caller participant (class/component/actor)" }),
   to: Type.String({ description: "Callee participant" }),
@@ -89,10 +147,14 @@ export default function callflow(pi: ExtensionAPI) {
       "When the user asks to see a call/execution structure, inspect the real code first, then call render_call_diagram.",
       "Always provide 'sequence' (call ordering); also provide 'flowchart' when the flow branches meaningfully.",
       "Every step in render_call_diagram MUST include the actual file and line you read; never fabricate sources.",
+      "If a participant label or message text contains parentheses or angle brackets, wrap it in double quotes, e.g. Bot->Bot: \"answerCallbackQuery (early, <15s)\".",
     ],
     parameters: RenderParams,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
-      const diagram = toDiagram(params);
+      const diagram = toDiagram({
+        ...params,
+        sequence: sanitizeMermaidSequence(params.sequence),
+      });
       pending = diagram; // buffer; the window opens at agent_end
       const stepLines = diagram.steps
         .map((s) => `${s.index}. ${s.from} → ${s.to} : ${s.call}  (${s.file}:${s.line})`)
