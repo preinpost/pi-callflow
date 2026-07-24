@@ -31186,7 +31186,7 @@ var CallflowController = class {
 
 // src/mcp/server.ts
 var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
-var PKG_VERSION = true ? "0.1.2" : "0.0.0";
+var PKG_VERSION = true ? "0.1.3" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);
@@ -31212,7 +31212,7 @@ async function checkForUpdate() {
     const latest = (await res.json())?.version;
     if (typeof latest === "string" && cmpSemver(latest, PKG_VERSION) > 0) {
       notify(
-        `Update available: ${PKG_NAME} ${PKG_VERSION} \u2192 ${latest}. Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}-mcp@latest' in your MCP config to always launch the newest.`,
+        `Update available: ${PKG_NAME} ${PKG_VERSION} \u2192 ${latest}. Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}@latest' in your MCP config to always launch the newest.`,
         "info"
       );
     }

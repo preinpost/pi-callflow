@@ -40,7 +40,7 @@ async function checkForUpdate(): Promise<void> {
     if (typeof latest === "string" && cmpSemver(latest, PKG_VERSION) > 0) {
       notify(
         `Update available: ${PKG_NAME} ${PKG_VERSION} → ${latest}. ` +
-          `Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}-mcp@latest' in your MCP config to always launch the newest.`,
+          `Run 'npm i -g ${PKG_NAME}@latest', or use 'npx -y ${PKG_NAME}@latest' in your MCP config to always launch the newest.`,
         "info",
       );
     }

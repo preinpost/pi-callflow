@@ -82,16 +82,17 @@ npm i -g pi-callflow
 ```
 
 Or skip the install entirely and let the agent run it via `npx` — this **auto-updates**, since
-`@latest` re-fetches the newest published version every time the MCP server launches:
+`@latest` re-fetches the newest published version every time the MCP server launches. Note the
+npx target is the **package** name `pi-callflow` (not the bin name `pi-callflow-mcp`):
 
 ```sh
-npx -y pi-callflow-mcp@latest
+npx -y pi-callflow@latest
 ```
 
 **Claude Code** — one command (auto-updating):
 
 ```sh
-claude mcp add callflow -- npx -y pi-callflow-mcp@latest
+claude mcp add callflow -- npx -y pi-callflow@latest
 ```
 
 **Codex** — add to `~/.codex/config.toml` (auto-updating):
@@ -99,11 +100,12 @@ claude mcp add callflow -- npx -y pi-callflow-mcp@latest
 ```toml
 [mcp_servers.callflow]
 command = "npx"
-args = ["-y", "pi-callflow-mcp@latest"]
+args = ["-y", "pi-callflow@latest"]
 ```
 
-(Prefer a pinned global binary instead? Use `command = "pi-callflow-mcp"` after
-`npm i -g pi-callflow`. On startup the server checks the registry once and logs a one-line
+(Prefer a pinned global binary instead? Run `npm i -g pi-callflow`, then use
+`command = "pi-callflow-mcp"` — that bin name is only valid on your PATH after a global install,
+not as an `npx` target. On startup the server checks the registry once and logs a one-line
 notice to stderr when a newer version is out; set `CALLFLOW_NO_UPDATE_CHECK=1` to silence it.)
 
 That's it. Then ask the agent in plain language:
@@ -137,7 +139,8 @@ working directory). Add an `env` to the config:
 
 ```toml
 [mcp_servers.callflow]
-command = "pi-callflow-mcp"
+command = "npx"
+args = ["-y", "pi-callflow@latest"]
 env = { CALLFLOW_CWD = "/Users/you/dev/your-project" }
 ```
 
