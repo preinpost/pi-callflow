@@ -11,7 +11,7 @@ Last updated: 2026-07-24 · Status: **MVP working, end-to-end verified**
 ## 1. What this is
 
 An on-demand call-structure visualizer for [pi](https://pi.dev). The user is onboarding onto
-`/Users/ms/dev/i/openstackit-java` (multi-module Java, ~3,514 `.java` files) and wants to ask
+a large multi-module Java codebase (~3,500 `.java` files) and wants to ask
 the agent *"show the call structure starting from login / this endpoint"* and see a
 **diagram** (call order) instead of terminal text.
 
@@ -123,7 +123,7 @@ from the SVG `viewBox`) so large diagrams stay readable. Switching tabs refits t
 
 ```sh
 cd ~/dev/pi-callflow && npm install && npm run build
-cd ~/dev/i/openstackit-java && pi -e ~/dev/pi-callflow
+cd ~/dev/your-java-project && pi -e ~/dev/pi-callflow
 # in pi:
 /callflow
 "show the call structure starting from the /auth/authorize endpoint"
