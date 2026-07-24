@@ -127,6 +127,13 @@ const RenderParams = Type.Object({
       "Ordered call steps. EVERY step must carry a real file:line you actually read. Do not invent sources; if you cannot ground a step, omit it or inspect the code first.",
   }),
   contextNotes: Type.Optional(Type.String({ description: "Optional context: branches, config keys, edge cases" })),
+  summary: Type.Optional(
+    Type.String({
+      description:
+        "Optional prose summary of the analysis (markdown: headings, bullets, bold, inline code supported). " +
+        "Shown in the collapsible summary pane at the bottom of the Call Flow window. Put the same overview text you would tell the user here.",
+    }),
+  ),
 });
 
 function toDiagram(params: {
@@ -135,6 +142,7 @@ function toDiagram(params: {
   flowchart?: string;
   steps: Array<Omit<CallStep, "index">>;
   notes?: string;
+  summary?: string;
 }): Diagram {
   return {
     title: params.title,
@@ -142,6 +150,7 @@ function toDiagram(params: {
     flowchart: params.flowchart,
     steps: params.steps.map((s, i) => ({ ...s, index: i + 1 })),
     notes: params.notes,
+    summary: params.summary,
     generatedAt: Date.now(),
   };
 }
@@ -191,6 +200,7 @@ export default function callflow(pi: ExtensionAPI) {
       "Only use the 'sequence' field as a manual override when the automatic layout is insufficient; it will be sanitized, not used verbatim.",
       "For branching/decision logic, provide 'flowchartNodes', 'flowchartEdges', and optionally 'flowchartSubgraphs'. The tool builds the flowchart for you. Only use 'flowchart' as a manual override.",
       "Every step in render_call_diagram MUST include the actual file and line you read; never fabricate sources.",
+      "Pass your prose overview via 'summary' (markdown) so the same explanation appears in the window's bottom summary pane, not only in chat.",
     ],
     parameters: RenderParams,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx: ExtensionContext) {
@@ -214,6 +224,7 @@ export default function callflow(pi: ExtensionAPI) {
         flowchart,
         steps: params.steps,
         notes: params.contextNotes,
+        summary: params.summary,
       });
       pending = diagram; // buffer; the window opens at agent_end
       const stepLines = diagram.steps

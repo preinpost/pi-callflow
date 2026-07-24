@@ -31468,7 +31468,7 @@ function renderFlowchart(input) {
 
 // src/mcp/server.ts
 var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
-var PKG_VERSION = true ? "0.1.7" : "0.0.0";
+var PKG_VERSION = true ? "0.2.0" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);
@@ -31569,7 +31569,10 @@ var inputSchema = {
   flowchartEdges: external_exports.array(FlowchartEdgeSchema).optional().describe("Flowchart edges."),
   flowchartSubgraphs: external_exports.array(FlowchartSubgraphSchema).optional().describe("Flowchart subgraphs."),
   steps: external_exports.array(StepSchema).describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
-  contextNotes: external_exports.string().optional().describe("Optional context: branches, config keys, edge cases")
+  contextNotes: external_exports.string().optional().describe("Optional context: branches, config keys, edge cases"),
+  summary: external_exports.string().optional().describe(
+    "Optional prose summary (markdown) shown in the Call Flow window's bottom summary pane. Put the same overview you would tell the user here."
+  )
 };
 function toDiagram(args) {
   const sequence = renderSequence({
@@ -31592,6 +31595,7 @@ function toDiagram(args) {
     flowchart,
     steps: args.steps.map((s, i) => ({ ...s, index: i + 1 })),
     notes: args.contextNotes,
+    summary: args.summary,
     generatedAt: Date.now()
   };
 }

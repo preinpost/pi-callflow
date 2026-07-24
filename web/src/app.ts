@@ -15,6 +15,7 @@ interface Diagram {
   flowchart?: string;
   steps: CallStep[];
   notes?: string;
+  summary?: string;
   generatedAt: number;
 }
 interface EditorOption { id: string; label: string; }
@@ -227,6 +228,7 @@ async function renderDiagram(diagram: Diagram): Promise<void> {
   setActiveTab("seq");
 
   renderSteps(diagram);
+  renderSummary(diagram);
 }
 
 function renderSteps(diagram: Diagram): void {
@@ -245,10 +247,57 @@ function renderSteps(diagram: Diagram): void {
   ($("notes")).textContent = diagram.notes ?? "";
 }
 
+function renderSummary(diagram: Diagram): void {
+  const pane = $("summary-pane");
+  const body = $("summary");
+  const text = (diagram.summary ?? "").trim();
+  if (text.length === 0) {
+    pane.hidden = true;
+    body.innerHTML = "";
+    return;
+  }
+  pane.hidden = false;
+  body.innerHTML = renderMarkdown(text);
+}
+
+/** Minimal, safe markdown → HTML: headings, bullets, bold, inline code. Escapes first. */
+function renderMarkdown(src: string): string {
+  const inline = (s: string) =>
+    escapeHtml(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const lines = src.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    if (h) {
+      closeList();
+      const level = h[1].length;
+      out.push(`<h${level}>${inline(h[2])}</h${level}>`);
+    } else if (bullet) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(bullet[1])}</li>`);
+    } else if (line.trim() === "") {
+      closeList();
+    } else {
+      closeList();
+      out.push(`<p>${inline(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join("");
+}
+
 function showEmpty(): void {
   document.body.classList.remove("has-diagram");
   ($("steps")).innerHTML = "";
   ($("notes")).textContent = "";
+  ($("summary-pane")).hidden = true;
+  ($("summary")).innerHTML = "";
 }
 
 function escapeHtml(value: string): string {
@@ -277,6 +326,12 @@ flowStage = new Stage($("flow-stage"));
 for (const btn of document.querySelectorAll<HTMLButtonElement>(".tab")) {
   btn.addEventListener("click", () => setActiveTab(btn.dataset.tab === "flow" ? "flow" : "seq"));
 }
+
+$("summary-toggle").addEventListener("click", () => {
+  const pane = $("summary-pane");
+  const collapsed = pane.classList.toggle("collapsed");
+  $("summary-toggle").setAttribute("aria-expanded", collapsed ? "false" : "true");
+});
 
 window.__callflowReceive = (message: HostMessage) => {
   if (message.type === "diagram") {

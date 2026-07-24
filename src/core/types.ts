@@ -17,6 +17,8 @@ export interface Diagram {
   flowchart?: string;
   steps: CallStep[];
   notes?: string;
+  /** Optional prose summary (markdown), shown in the bottom summary pane. */
+  summary?: string;
   generatedAt: number;
 }
 
