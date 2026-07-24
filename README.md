@@ -30,11 +30,10 @@ One package, two ways to run it. Pick whichever agent you use.
 
 ### Option A — with pi (first-class)
 
-Install in one line (npm clones the repo and auto-builds via the `prepare` script — no
-`npm publish` needed):
+Install in one line (prebuilt viewer + MCP server ship in the package — no local build):
 
 ```sh
-npm i -g github:preinpost/pi-callflow
+npm i -g pi-callflow
 ```
 
 Load the extension in your project and ask for a flow (point `-e` at the globally installed
@@ -57,17 +56,16 @@ works — if the agent calls the tool, the window still opens at the end of the 
 
 The same viewer is a local **stdio MCP server**, so teammates on Claude Code or Codex get the
 identical `render_call_diagram` tool and native window. Install once — this puts
-`pi-callflow-mcp` on your PATH (no clone, no `npm link`, no absolute paths):
+`pi-callflow-mcp` on your PATH (no clone, no build, no absolute paths):
 
 ```sh
-npm i -g github:preinpost/pi-callflow
+npm i -g pi-callflow
 ```
 
-Pin a branch, tag, or commit if you want a fixed version:
+Or skip the install entirely and let the agent run it via `npx`:
 
 ```sh
-npm i -g github:preinpost/pi-callflow#main
-npm i -g github:preinpost/pi-callflow#v0.1.0
+npx -y pi-callflow-mcp
 ```
 
 **Claude Code** — one command:
