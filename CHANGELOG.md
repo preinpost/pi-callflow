@@ -1,3 +1,17 @@
+# [0.2.0](https://github.com/preinpost/pi-callflow/compare/v0.1.7...v0.2.0) (2026-07-24)
+
+
+### Bug Fixes
+
+* **pi:** escape semicolons in Mermaid sequence message text ([02f3e9a](https://github.com/preinpost/pi-callflow/commit/02f3e9aa0cd0ca9b537c11cc870f6e00828f46eb))
+
+
+### Features
+
+* **pi:** generate flowchart from structured nodes/edges too ([5204e7a](https://github.com/preinpost/pi-callflow/commit/5204e7a3ba5e5a6d80d97df9ce061d0fa80dac09))
+* **pi:** generate Mermaid sequence from structured steps instead of raw string ([7bad0c4](https://github.com/preinpost/pi-callflow/commit/7bad0c47238b655330cc1949d1ad5faef488510d))
+* **web): friendly render-error fallback; test(core:** structured Mermaid builder unit tests ([9695db9](https://github.com/preinpost/pi-callflow/commit/9695db97cee8c90701c9d9226f1e9f4bf1d4024e)), closes [#59](https://github.com/preinpost/pi-callflow/issues/59)
+
 ## [0.1.7](https://github.com/preinpost/pi-callflow/compare/v0.1.6...v0.1.7) (2026-07-24)
 
 
