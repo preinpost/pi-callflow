@@ -30,15 +30,18 @@ One package, two ways to run it. Pick whichever agent you use.
 
 ### Option A — with pi (first-class)
 
+Install in one line (npm clones the repo and auto-builds via the `prepare` script — no
+`npm publish` needed):
+
 ```sh
-git clone <repo-url> ~/dev/pi-callflow
-cd ~/dev/pi-callflow && npm install          # `prepare` auto-builds the viewer + MCP server
+npm i -g github:preinpost/pi-callflow
 ```
 
-Load the extension in your project and ask for a flow:
+Load the extension in your project and ask for a flow (point `-e` at the globally installed
+package, or clone the repo if you prefer a local checkout):
 
 ```sh
-cd ~/dev/i/openstackit-java && pi -e ~/dev/pi-callflow
+cd ~/dev/i/openstackit-java && pi -e pi-callflow
 ```
 ```text
 /callflow "show the call flow from the /auth/authorize endpoint"
@@ -53,12 +56,18 @@ works — if the agent calls the tool, the window still opens at the end of the 
 ### Option B — with Claude Code / Codex (MCP)
 
 The same viewer is a local **stdio MCP server**, so teammates on Claude Code or Codex get the
-identical `render_call_diagram` tool and native window. Install once:
+identical `render_call_diagram` tool and native window. Install once — this puts
+`pi-callflow-mcp` on your PATH (no clone, no `npm link`, no absolute paths):
 
 ```sh
-git clone <repo-url> ~/dev/pi-callflow
-cd ~/dev/pi-callflow && npm install          # builds dist/mcp-server.mjs automatically
-npm link                                     # puts `pi-callflow-mcp` on your PATH (no abs paths)
+npm i -g github:preinpost/pi-callflow
+```
+
+Pin a branch, tag, or commit if you want a fixed version:
+
+```sh
+npm i -g github:preinpost/pi-callflow#main
+npm i -g github:preinpost/pi-callflow#v0.1.0
 ```
 
 **Claude Code** — one command:
@@ -78,7 +87,10 @@ That's it. Then ask the agent *"show the call flow from /auth/authorize"* and th
 opens as soon as the tool is called.
 
 <details>
-<summary>Without <code>npm link</code> (absolute path)</summary>
+<summary>From a local clone (absolute path)</summary>
+
+If you cloned the repo instead of installing globally (`git clone` +
+`npm install` builds `dist/mcp-server.mjs`), point at it directly:
 
 ```sh
 claude mcp add callflow -- node /Users/you/dev/pi-callflow/dist/mcp-server.mjs
