@@ -1,6 +1,6 @@
 {
   "name": "pi-callflow",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "On-demand call-structure viewer for pi: ask the agent to show a call flow, get a live Mermaid sequence/flowchart in a native Glimpse window with file:line grounding.",
   "type": "module",
   "license": "MIT",
