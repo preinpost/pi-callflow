@@ -1,8 +1,12 @@
-/** Helpers to generate Mermaid sequenceDiagram source from structured data.
+/** Helpers to generate Mermaid diagrams from structured data.
  *
  *  This avoids asking the LLM to write Mermaid syntax directly, which keeps
  *  hitting parser edge cases (parentheses, angle brackets, semicolons, etc.).
  */
+
+// ---------------------------------------------------------------------------
+// Sequence diagram
+// ---------------------------------------------------------------------------
 
 export interface SequenceParticipant {
   id: string;
@@ -38,7 +42,50 @@ export interface SequenceFromStepsInput {
   groups?: SequenceGroup[];
 }
 
-/** Characters that break Mermaid sequence parsing, even inside quoted text. */
+// ---------------------------------------------------------------------------
+// Flowchart
+// ---------------------------------------------------------------------------
+
+export type FlowchartNodeShape =
+  | "default"
+  | "round"
+  | "stadium"
+  | "subprocess"
+  | "cylinder"
+  | "circle"
+  | "diamond";
+
+export interface FlowchartNode {
+  id: string;
+  label: string;
+  shape?: FlowchartNodeShape;
+}
+
+export interface FlowchartEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface FlowchartSubgraph {
+  label: string;
+  direction?: "TB" | "TD" | "LR" | "RL";
+  nodes: FlowchartNode[];
+  edges: FlowchartEdge[];
+}
+
+export interface FlowchartInput {
+  direction?: "TB" | "TD" | "LR" | "RL";
+  nodes: FlowchartNode[];
+  edges: FlowchartEdge[];
+  subgraphs?: FlowchartSubgraph[];
+}
+
+// ---------------------------------------------------------------------------
+// Shared escaping
+// ---------------------------------------------------------------------------
+
+/** Characters that break Mermaid parsing, even inside quoted text. */
 function escapeMermaidText(value: string): string {
   return value
     .replace(/"/g, "#quot;")
@@ -49,11 +96,21 @@ function mermaidQuoted(value: string): string {
   return `"${escapeMermaidText(value)}"`;
 }
 
+// ---------------------------------------------------------------------------
+// Sequence diagram builder
+// ---------------------------------------------------------------------------
+
 function arrowFor(kind: "request" | "response" | undefined): string {
   return kind === "response" ? "-->>" : ">>";
 }
 
-function renderMessageLine(from: string, to: string, text: string, kind?: "request" | "response", indent = "    "): string {
+function renderMessageLine(
+  from: string,
+  to: string,
+  text: string,
+  kind?: "request" | "response",
+  indent = "    ",
+): string {
   return `${indent}${from}-${arrowFor(kind)}${to}: ${mermaidQuoted(text)}`;
 }
 
@@ -106,10 +163,11 @@ export function buildSequenceDiagram(input: SequenceFromStepsInput): string {
   }
 
   // Stable declaration order: explicit participants first, then others alphabetically.
+  const explicitIds = new Set(input.participants?.map((p) => p.id) ?? []);
   const orderedIds = [
     ...(input.participants?.map((p) => p.id) ?? []),
     ...Array.from(usedIds)
-      .filter((id) => !participantMap.has(id) || !input.participants?.some((p) => p.id === id))
+      .filter((id) => !explicitIds.has(id))
       .sort(),
   ];
   for (const id of orderedIds) {
@@ -139,5 +197,56 @@ export function buildSequenceDiagram(input: SequenceFromStepsInput): string {
     lines.push("    end");
   }
 
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Flowchart builder
+// ---------------------------------------------------------------------------
+
+function renderFlowchartNode(node: FlowchartNode): string {
+  const label = mermaidQuoted(node.label);
+  switch (node.shape) {
+    case "round":
+      return `${node.id}(${label})`;
+    case "stadium":
+      return `${node.id}([${label}])`;
+    case "subprocess":
+      return `${node.id}[[${label}]]`;
+    case "cylinder":
+      return `${node.id}[(${label})]`;
+    case "circle":
+      return `${node.id}((${label}))`;
+    case "diamond":
+      return `${node.id}{${label}}`;
+    case "default":
+    default:
+      return `${node.id}[${label}]`;
+  }
+}
+
+function renderFlowchartEdge(edge: FlowchartEdge): string {
+  if (edge.label) {
+    return `${edge.from} -->|${mermaidQuoted(edge.label)}| ${edge.to}`;
+  }
+  return `${edge.from} --> ${edge.to}`;
+}
+
+function renderFlowchartSubgraph(sub: FlowchartSubgraph, indent = "    "): string {
+  const lines: string[] = [`${indent}subgraph ${mermaidQuoted(sub.label)}`];
+  const inner = `${indent}    `;
+  if (sub.direction) lines.push(`${inner}direction ${sub.direction}`);
+  for (const n of sub.nodes) lines.push(`${inner}${renderFlowchartNode(n)}`);
+  for (const e of sub.edges) lines.push(`${inner}${renderFlowchartEdge(e)}`);
+  lines.push(`${indent}end`);
+  return lines.join("\n");
+}
+
+export function buildFlowchart(input: FlowchartInput): string {
+  const direction = input.direction ?? "TD";
+  const lines: string[] = [`flowchart ${direction}`];
+  for (const n of input.nodes) lines.push(`    ${renderFlowchartNode(n)}`);
+  for (const e of input.edges) lines.push(`    ${renderFlowchartEdge(e)}`);
+  for (const s of input.subgraphs ?? []) lines.push(renderFlowchartSubgraph(s));
   return lines.join("\n");
 }

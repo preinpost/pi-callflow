@@ -1,7 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { CallflowController, type Notify } from "../core/controller.js";
-import { buildSequenceDiagram } from "../core/mermaid.js";
+import {
+  buildFlowchart,
+  buildSequenceDiagram,
+  type FlowchartNode,
+  type FlowchartSubgraph,
+} from "../core/mermaid.js";
 import type { CallStep, Diagram } from "../core/types.js";
 
 const MERMAID_SPECIAL_RE = /[()<>;]/;
@@ -123,6 +128,38 @@ const GroupSchema = Type.Object({
   items: Type.Array(GroupItemSchema),
 });
 
+const FlowchartNodeSchema = Type.Object({
+  id: Type.String({ description: "Short node id used in edges (alphanumeric/underscore recommended)" }),
+  label: Type.String({ description: "Display label" }),
+  shape: Type.Optional(
+    Type.Union(
+      [
+        Type.Literal("default"),
+        Type.Literal("round"),
+        Type.Literal("stadium"),
+        Type.Literal("subprocess"),
+        Type.Literal("cylinder"),
+        Type.Literal("circle"),
+        Type.Literal("diamond"),
+      ],
+      { description: "Mermaid flowchart node shape", default: "default" },
+    ),
+  ),
+});
+
+const FlowchartEdgeSchema = Type.Object({
+  from: Type.String({ description: "Source node id" }),
+  to: Type.String({ description: "Target node id" }),
+  label: Type.Optional(Type.String({ description: "Edge label" })),
+});
+
+const FlowchartSubgraphSchema = Type.Object({
+  label: Type.String(),
+  direction: Type.Optional(Type.Union([Type.Literal("TB"), Type.Literal("TD"), Type.Literal("LR"), Type.Literal("RL")])),
+  nodes: Type.Array(FlowchartNodeSchema),
+  edges: Type.Array(FlowchartEdgeSchema),
+});
+
 const RenderParams = Type.Object({
   title: Type.String({ description: "Short title, e.g. 'Login → OTP verification flow'" }),
   sequence: Type.Optional(
@@ -142,9 +179,18 @@ const RenderParams = Type.Object({
   flowchart: Type.Optional(
     Type.String({
       description:
-        "Mermaid 'flowchart TD' source for branch/decision logic. Provide it whenever the flow has meaningful branching; it is shown in a collapsible section under the sequence diagram.",
+        "DEPRECATED. Provide 'flowchartNodes', 'flowchartEdges', and optionally 'flowchartSubgraphs' instead. Optional raw Mermaid 'flowchart TD' source, used only as an override.",
     }),
   ),
+  flowchartDirection: Type.Optional(
+    Type.Union([Type.Literal("TB"), Type.Literal("TD"), Type.Literal("LR"), Type.Literal("RL")], {
+      description: "Flowchart direction",
+      default: "TD",
+    }),
+  ),
+  flowchartNodes: Type.Optional(Type.Array(FlowchartNodeSchema, { description: "Flowchart nodes" })),
+  flowchartEdges: Type.Optional(Type.Array(FlowchartEdgeSchema, { description: "Flowchart edges" })),
+  flowchartSubgraphs: Type.Optional(Type.Array(FlowchartSubgraphSchema, { description: "Flowchart subgraphs" })),
   steps: Type.Array(StepSchema, {
     description:
       "Ordered call steps. EVERY step must carry a real file:line you actually read. Do not invent sources; if you cannot ground a step, omit it or inspect the code first.",
@@ -167,6 +213,46 @@ function toDiagram(params: {
     notes: params.notes,
     generatedAt: Date.now(),
   };
+}
+
+function renderFlowchart(params: {
+  flowchart?: string;
+  direction?: "TB" | "TD" | "LR" | "RL";
+  nodes?: Array<{ id: string; label: string; shape?: string }>;
+  edges?: Array<{ from: string; to: string; label?: string }>;
+  subgraphs?: Array<{ label: string; direction?: "TB" | "TD" | "LR" | "RL"; nodes: any[]; edges: any[] }>;
+}): string | undefined {
+  if (params.flowchart) return sanitizeMermaidFlowchart(params.flowchart);
+  if (!params.nodes || params.nodes.length === 0) return undefined;
+  return buildFlowchart({
+    direction: params.direction,
+    nodes: params.nodes as FlowchartNode[],
+    edges: params.edges ?? [],
+    subgraphs: params.subgraphs as FlowchartSubgraph[] | undefined,
+  });
+}
+
+function sanitizeMermaidFlowchart(flowchart: string): string {
+  // Minimal sanitizer for legacy raw flowchart input.
+  // Node labels and edge labels are the most common failure points.
+  return flowchart
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      // Node definition: id["label"] or id("label") etc. Ensure labels are quoted.
+      const nodeMatch = trimmed.match(/^(\S+)\s*([\[(\{]+)\s*([^\]\)\}]+)\s*([\]\)\}]+)$/);
+      if (nodeMatch) {
+        const id = nodeMatch[1];
+        const open = nodeMatch[2];
+        const label = nodeMatch[3].trim();
+        const close = nodeMatch[4];
+        if (!/^".*"$/.test(label)) {
+          return `${id}${open}${mermaidQuote(label)}${close}`;
+        }
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 function renderSequence(params: {
@@ -199,7 +285,7 @@ function buildCallflowPrompt(question: string): string {
     `(Call-flow request: inspect the ACTUAL code paths first, then call render_call_diagram. ` +
     `Provide 'participants' (id + label) and 'steps' (from/to id, call text, file, line). ` +
     `The sequence diagram is generated automatically, so do NOT write raw Mermaid unless necessary. ` +
-    `Also provide the 'flowchart' field (Mermaid 'flowchart TD') whenever the flow has branching — ` +
+    `Also provide 'flowchartNodes' and 'flowchartEdges' whenever the flow has branching — ` +
     `it is shown collapsed under the sequence. Every step MUST cite a real file:line you read. ` +
     `The window opens automatically once you finish.)`
   );
@@ -236,7 +322,7 @@ export default function callflow(pi: ExtensionAPI) {
       "When the user asks to see a call/execution structure, inspect the real code first, then call render_call_diagram.",
       "Provide 'participants' (short id + display label) and 'steps' (from/to ids, call text, file, line). The tool builds the Mermaid sequence diagram for you.",
       "Only use the 'sequence' field as a manual override when the automatic layout is insufficient; it will be sanitized, not used verbatim.",
-      "Also provide 'flowchart' (Mermaid 'flowchart TD') when the flow branches meaningfully.",
+      "For branching/decision logic, provide 'flowchartNodes', 'flowchartEdges', and optionally 'flowchartSubgraphs'. The tool builds the flowchart for you. Only use 'flowchart' as a manual override.",
       "Every step in render_call_diagram MUST include the actual file and line you read; never fabricate sources.",
     ],
     parameters: RenderParams,
@@ -248,10 +334,17 @@ export default function callflow(pi: ExtensionAPI) {
         notes: params.notes,
         groups: params.groups,
       });
+      const flowchart = renderFlowchart({
+        flowchart: params.flowchart,
+        direction: params.flowchartDirection,
+        nodes: params.flowchartNodes,
+        edges: params.flowchartEdges,
+        subgraphs: params.flowchartSubgraphs,
+      });
       const diagram = toDiagram({
         title: params.title,
         sequence,
-        flowchart: params.flowchart,
+        flowchart,
         steps: params.steps,
         notes: params.contextNotes,
       });
