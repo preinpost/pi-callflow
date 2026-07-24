@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/preinpost/pi-callflow/compare/v0.2.1...v0.3.0) (2026-07-24)
+
+
+### Features
+
+* **core:** add summary pane to Call Flow window ([72b961a](https://github.com/preinpost/pi-callflow/commit/72b961aa66d5ac12e173c5ee27ce7d22b4b0765e))
+
 ## [0.2.1](https://github.com/preinpost/pi-callflow/compare/v0.2.0...v0.2.1) (2026-07-24)
 
 
