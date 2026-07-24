@@ -30960,7 +30960,7 @@ var StdioServerTransport = class {
 
 // src/core/controller.ts
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync as readFileSync2, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { open } from "glimpseui";
@@ -30996,6 +30996,39 @@ function isOnPath(cmd) {
 }
 function detectEditors() {
   return EDITORS.filter((e) => isOnPath(e.cmd));
+}
+function isWsl() {
+  if (process.platform !== "linux") return false;
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try {
+    return /microsoft/i.test(readFileSync2("/proc/version", "utf8"));
+  } catch {
+    return false;
+  }
+}
+function resolveBrowserOpener(file2) {
+  const override = process.env.CALLFLOW_BROWSER?.trim();
+  if (override) {
+    const parts = override.split(/\s+/);
+    const rest = parts.slice(1);
+    return {
+      cmd: parts[0],
+      args: rest.length ? rest.map((a) => a.replace("{file}", file2)) : [file2]
+    };
+  }
+  if (process.platform === "darwin") return { cmd: "open", args: [file2] };
+  if (process.platform === "win32") return { cmd: "start", args: [file2] };
+  if (isWsl()) {
+    if (isOnPath("wslview")) return { cmd: "wslview", args: [file2] };
+    try {
+      const win = spawnSync("wslpath", ["-w", file2], { encoding: "utf8" });
+      if (!win.error && win.status === 0 && win.stdout.trim()) {
+        return { cmd: "explorer.exe", args: [win.stdout.trim()] };
+      }
+    } catch {
+    }
+  }
+  return { cmd: "xdg-open", args: [file2] };
 }
 function escapeInline(value) {
   return value.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
@@ -31164,8 +31197,8 @@ var CallflowController = class {
       const dir = mkdtempSync(join(tmpdir(), "pi-callflow-"));
       const file2 = join(dir, "callflow.html");
       writeFileSync(file2, html, "utf8");
-      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      spawn(opener, [file2], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
+      const { cmd, args } = resolveBrowserOpener(file2);
+      spawn(cmd, args, { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
       this.usingBrowserFallback = true;
     } catch (error51) {
       this.notify(`Browser fallback failed: ${error51 instanceof Error ? error51.message : String(error51)}`, "error");
@@ -31186,7 +31219,7 @@ var CallflowController = class {
 
 // src/mcp/server.ts
 var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
-var PKG_VERSION = true ? "0.1.3" : "0.0.0";
+var PKG_VERSION = true ? "0.1.4" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);

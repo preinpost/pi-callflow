@@ -162,6 +162,38 @@ export CALLFLOW_OPEN_CMD='idea --line {line} {file}'   # IntelliJ
 export CALLFLOW_OPEN_CMD='code -g {file}:{line}'        # VS Code
 ```
 
+## Linux / WSL
+
+The native Glimpse window needs a GUI. On plain Linux, install the GTK4 / WebKitGTK dev
+packages so the native window can build and launch; otherwise the viewer falls back to your
+system browser via `xdg-open`.
+
+**WSL (WSL2 on Windows)** is a common gotcha: there's usually no working `xdg-open`, so the
+fallback silently does nothing and *no window appears*. callflow now detects WSL and opens the
+diagram in your **Windows default browser** automatically, using either:
+
+- [`wslview`](https://github.com/wslutilities/wslu) if installed (recommended), or
+- `explorer.exe` with a translated Windows path as a fallback.
+
+So the smoothest setup on WSL is to install `wslu`:
+
+```sh
+sudo apt install wslu          # Debian/Ubuntu — provides wslview
+```
+
+Want the *real native window* on WSL instead of the browser? You need **WSLg** (bundled with
+Windows 11 and recent Windows 10) plus the GTK4/WebKit toolchain so glimpseui can build its
+native binary. If that's not available, the Windows-browser fallback above is the practical
+path.
+
+Either way, you can force a specific opener with an env override (handy for a non-default
+browser, or any custom launcher). Use `{file}` for the HTML path (it's appended if omitted):
+
+```sh
+export CALLFLOW_BROWSER='wslview {file}'
+export CALLFLOW_BROWSER='/mnt/c/Program Files/Google/Chrome/Application/chrome.exe'
+```
+
 ## Offline / closed networks
 
 The viewer HTML is fully self-contained: `mermaid` is bundled inline at build time (no CDN),

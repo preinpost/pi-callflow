@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { open, type GlimpseWindow } from "glimpseui";
@@ -36,6 +36,49 @@ function isOnPath(cmd: string): boolean {
 
 function detectEditors(): EditorSpec[] {
   return EDITORS.filter((e) => isOnPath(e.cmd));
+}
+
+/** True when running inside WSL (Windows Subsystem for Linux). */
+function isWsl(): boolean {
+  if (process.platform !== "linux") return false;
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try {
+    return /microsoft/i.test(readFileSync("/proc/version", "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick a command to open an HTML file in the system browser.
+ * CALLFLOW_BROWSER overrides everything (use {file} for the path, else it is appended).
+ * On WSL, xdg-open usually does nothing, so open the Windows default browser via
+ * wslview (from wslu) or explorer.exe with a translated Windows path.
+ */
+function resolveBrowserOpener(file: string): { cmd: string; args: string[] } {
+  const override = process.env.CALLFLOW_BROWSER?.trim();
+  if (override) {
+    const parts = override.split(/\s+/);
+    const rest = parts.slice(1);
+    return {
+      cmd: parts[0],
+      args: rest.length ? rest.map((a) => a.replace("{file}", file)) : [file],
+    };
+  }
+  if (process.platform === "darwin") return { cmd: "open", args: [file] };
+  if (process.platform === "win32") return { cmd: "start", args: [file] };
+  if (isWsl()) {
+    if (isOnPath("wslview")) return { cmd: "wslview", args: [file] };
+    try {
+      const win = spawnSync("wslpath", ["-w", file], { encoding: "utf8" });
+      if (!win.error && win.status === 0 && win.stdout.trim()) {
+        return { cmd: "explorer.exe", args: [win.stdout.trim()] };
+      }
+    } catch {
+      /* fall through to xdg-open */
+    }
+  }
+  return { cmd: "xdg-open", args: [file] };
 }
 
 export type Notify = (message: string, level: "info" | "warning" | "error") => void;
@@ -215,8 +258,8 @@ export class CallflowController {
       const dir = mkdtempSync(join(tmpdir(), "pi-callflow-"));
       const file = join(dir, "callflow.html");
       writeFileSync(file, html, "utf8");
-      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      spawn(opener, [file], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
+      const { cmd, args } = resolveBrowserOpener(file);
+      spawn(cmd, args, { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
       this.usingBrowserFallback = true;
     } catch (error) {
       this.notify(`Browser fallback failed: ${error instanceof Error ? error.message : String(error)}`, "error");
