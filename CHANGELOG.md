@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/preinpost/pi-callflow/compare/v0.3.0...v0.4.0) (2026-07-24)
+
+
+### Features
+
+* **web:** PNG export button and light theme ([30adf57](https://github.com/preinpost/pi-callflow/commit/30adf570670aba53bd31e38de7cd30ea4c098900))
+
 # [0.3.0](https://github.com/preinpost/pi-callflow/compare/v0.2.1...v0.3.0) (2026-07-24)
 
 
