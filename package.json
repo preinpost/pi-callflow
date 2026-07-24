@@ -4,6 +4,14 @@
   "description": "On-demand call-structure viewer for pi: ask the agent to show a call flow, get a live Mermaid sequence/flowchart in a native Glimpse window with file:line grounding.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/preinpost/pi-callflow.git"
+  },
+  "homepage": "https://github.com/preinpost/pi-callflow#readme",
+  "bugs": {
+    "url": "https://github.com/preinpost/pi-callflow/issues"
+  },
   "files": [
     "src",
     "web/dist",
