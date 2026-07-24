@@ -123,7 +123,7 @@ from the SVG `viewBox`) so large diagrams stay readable. Switching tabs refits t
 
 ```sh
 cd ~/dev/pi-callflow && npm install && npm run build
-cd ~/dev/your-java-project && pi -e ~/dev/pi-callflow
+cd ~/dev/your-project && pi -e ~/dev/pi-callflow
 # in pi:
 /callflow
 "show the call structure starting from the /auth/authorize endpoint"

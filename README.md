@@ -40,7 +40,7 @@ Load the extension in your project and ask for a flow (point `-e` at the globall
 package, or clone the repo if you prefer a local checkout):
 
 ```sh
-cd ~/dev/your-java-project && pi -e pi-callflow
+cd ~/dev/your-project && pi -e pi-callflow
 ```
 ```text
 /callflow "show the call flow from the /auth/authorize endpoint"
@@ -107,7 +107,7 @@ working directory). Add an `env` to the config:
 ```toml
 [mcp_servers.callflow]
 command = "pi-callflow-mcp"
-env = { CALLFLOW_CWD = "/Users/you/dev/your-java-project" }
+env = { CALLFLOW_CWD = "/Users/you/dev/your-project" }
 ```
 
 Notes for MCP:
