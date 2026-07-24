@@ -131,7 +131,10 @@ const inputSchema = {
     .describe("DEPRECATED. Provide 'participants' and 'steps' instead. Optional raw Mermaid 'sequenceDiagram' override."),
   participants: z.array(ParticipantSchema).optional().describe("Participant aliases (id + display label)."),
   notes: z.array(NoteSchema).optional().describe("Stand-alone Mermaid notes."),
-  groups: z.array(GroupSchema).optional().describe("Grouping blocks: alt/opt/loop/par/rect."),
+  groups: z
+    .array(z.union([GroupSchema, GroupItemSchema]))
+    .optional()
+    .describe("Grouping blocks: alt/opt/loop/par/rect. A stray top-level 'else'/message is tolerated and absorbed into the preceding group."),
   flowchart: z
     .string()
     .optional()

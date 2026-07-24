@@ -86,10 +86,12 @@ export interface FlowchartInput {
 // ---------------------------------------------------------------------------
 
 /** Characters that break Mermaid parsing, even inside quoted text.
- *  Double quotes become '#quot;' and bare semicolons become '#59;', while any
- *  existing entity terminator (e.g. '#59;', '#quot;', '&lt;', '&#38;') is left intact. */
+ *  Newlines become '<br/>', double quotes become '#quot;', and bare semicolons
+ *  become '#59;', while any existing entity terminator (e.g. '#59;', '#quot;',
+ *  '&lt;', '&#38;') is left intact. */
 function escapeMermaidText(value: string): string {
   return value
+    .replace(/\r?\n/g, "<br/>")
     .replace(/"/g, "#quot;")
     .replace(/((?:&#?|#)[a-zA-Z0-9]+;)|;/g, (_match, entity) => entity ?? "#59;");
 }
@@ -332,17 +334,84 @@ export function sanitizeMermaidFlowchart(flowchart: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Group coercion: repair loosely-shaped 'groups' input so it never hard-fails
+// ---------------------------------------------------------------------------
+
+const GROUP_KEYWORDS = new Set(["alt", "opt", "loop", "par", "rect"]);
+
+function coerceGroupItem(raw: unknown): SequenceGroupItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.type === "message" && typeof r.from === "string" && typeof r.to === "string") {
+    return { type: "message", from: r.from, to: r.to, text: String(r.text ?? "") };
+  }
+  if (r.type === "note" && Array.isArray(r.participants)) {
+    const position = r.position === "left" || r.position === "right" ? r.position : "over";
+    return { type: "note", position, participants: r.participants.map(String), text: String(r.text ?? "") };
+  }
+  if (r.type === "else") {
+    return { type: "else", label: r.label != null ? String(r.label) : undefined };
+  }
+  return null;
+}
+
+/** Normalize a loosely-shaped groups array into valid SequenceGroup[].
+ *  Stray top-level items (e.g. a bare `else`) are absorbed into the current
+ *  group; empty groups are dropped. This makes the tool tolerant of the common
+ *  LLM mistake of emitting an `else` (or message) as a sibling of groups. */
+export function coerceSequenceGroups(raw: unknown): SequenceGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SequenceGroup[] = [];
+  let current: SequenceGroup | null = null;
+  for (const entry of raw) {
+    const keyword = entry && typeof entry === "object" ? (entry as Record<string, unknown>).keyword : undefined;
+    if (typeof keyword === "string" && GROUP_KEYWORDS.has(keyword)) {
+      const g = entry as Record<string, unknown>;
+      const items = Array.isArray(g.items)
+        ? g.items.map(coerceGroupItem).filter((x): x is SequenceGroupItem => x != null)
+        : [];
+      current = { keyword: keyword as SequenceGroup["keyword"], label: g.label != null ? String(g.label) : undefined, items };
+      out.push(current);
+    } else {
+      const item = coerceGroupItem(entry);
+      if (item) {
+        if (!current) {
+          current = { keyword: "alt", items: [] };
+          out.push(current);
+        }
+        current.items.push(item);
+      }
+    }
+  }
+  return out.filter((g) => g.items.length > 0);
+}
+
+// ---------------------------------------------------------------------------
 // High-level render helpers: raw override wins, else build from structure
 // ---------------------------------------------------------------------------
 
-export interface RenderSequenceInput extends SequenceFromStepsInput {
+export interface RenderSequenceInput extends Omit<SequenceFromStepsInput, "groups"> {
   /** Raw Mermaid override; sanitized, not used verbatim. */
   sequence?: string;
+  /** Loosely-shaped groups; coerced/repaired before building. */
+  groups?: unknown;
 }
 
 export function renderSequence(input: RenderSequenceInput): string {
   if (input.sequence) return sanitizeMermaidSequence(input.sequence);
-  return buildSequenceDiagram(input);
+  const groups = coerceSequenceGroups(input.groups);
+  try {
+    return buildSequenceDiagram({
+      participants: input.participants,
+      steps: input.steps,
+      notes: input.notes,
+      groups,
+    });
+  } catch {
+    // Ultimate safety net: never fail the render. Drop decorations, keep the
+    // grounded steps so the window always opens with a valid diagram.
+    return buildSequenceDiagram({ participants: input.participants, steps: input.steps });
+  }
 }
 
 export interface RenderFlowchartInput {
@@ -357,10 +426,14 @@ export interface RenderFlowchartInput {
 export function renderFlowchart(input: RenderFlowchartInput): string | undefined {
   if (input.flowchart) return sanitizeMermaidFlowchart(input.flowchart);
   if (!input.nodes || input.nodes.length === 0) return undefined;
-  return buildFlowchart({
-    direction: input.direction,
-    nodes: input.nodes,
-    edges: input.edges ?? [],
-    subgraphs: input.subgraphs,
-  });
+  try {
+    return buildFlowchart({
+      direction: input.direction,
+      nodes: input.nodes,
+      edges: input.edges ?? [],
+      subgraphs: input.subgraphs,
+    });
+  } catch {
+    return undefined;
+  }
 }

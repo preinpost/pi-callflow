@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   buildFlowchart,
   buildSequenceDiagram,
+  coerceSequenceGroups,
   renderFlowchart,
   renderSequence,
   sanitizeMermaidSequence,
@@ -132,4 +133,49 @@ test("sanitizeMermaidSequence: leaves already-quoted labels alone", () => {
   const out = sanitizeMermaidSequence(raw);
   assert.match(out, /participant A as "Already Quoted"/);
   assert.doesNotMatch(out, /""/);
+});
+
+test("escape: newlines in labels/text become <br/>", () => {
+  const seq = buildSequenceDiagram({
+    participants: [{ id: "A", label: "Line1\nLine2" }],
+    steps: [{ from: "A", to: "A", call: "do\nthing" }],
+  });
+  assert.match(seq, /participant A as "Line1<br\/>Line2"/);
+  assert.match(seq, /A->>A: "do<br\/>thing"/);
+  const fc = buildFlowchart({ nodes: [{ id: "N", label: "Long polling\ngetUpdates" }], edges: [] });
+  assert.match(fc, /N\["Long polling<br\/>getUpdates"\]/);
+});
+
+test("coerceSequenceGroups: absorbs a stray top-level else into previous group", () => {
+  const groups = coerceSequenceGroups([
+    { keyword: "alt", label: "polling", items: [{ type: "message", from: "A", to: "B", text: "poll" }] },
+    { type: "else", label: "webhook" },
+  ]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].items.length, 2);
+  assert.deepEqual(groups[0].items[1], { type: "else", label: "webhook" });
+});
+
+test("coerceSequenceGroups: drops empty groups and unknown items", () => {
+  const groups = coerceSequenceGroups([
+    { keyword: "alt", label: "empty", items: [] },
+    { keyword: "opt", label: "ok", items: [{ type: "message", from: "A", to: "B", text: "x" }, { type: "bogus" }] },
+  ]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].keyword, "opt");
+  assert.equal(groups[0].items.length, 1);
+});
+
+test("renderSequence: tolerates loose groups with a top-level else (no throw)", () => {
+  const out = renderSequence({
+    participants: [{ id: "A", label: "A" }, { id: "B", label: "B" }],
+    steps: [{ from: "A", to: "B", call: "go" }],
+    groups: [
+      { keyword: "alt", label: "p", items: [{ type: "message", from: "A", to: "B", text: "poll" }] },
+      { type: "else", label: "shared" },
+    ],
+  });
+  assert.match(out, /alt "p"/);
+  assert.match(out, /else "shared"/);
+  assert.match(out, /\n {4}end/);
 });

@@ -101,7 +101,12 @@ const RenderParams = Type.Object({
     }),
   ),
   notes: Type.Optional(Type.Array(NoteSchema, { description: "Stand-alone Mermaid notes." })),
-  groups: Type.Optional(Type.Array(GroupSchema, { description: "Grouping blocks: alt/opt/loop/par/rect." })),
+  groups: Type.Optional(
+    Type.Array(Type.Union([GroupSchema, GroupItemSchema]), {
+      description:
+        "Grouping blocks: alt/opt/loop/par/rect. An 'else' belongs inside a group's items, but a stray top-level 'else'/message is tolerated and absorbed into the preceding group.",
+    }),
+  ),
   flowchart: Type.Optional(
     Type.String({
       description:

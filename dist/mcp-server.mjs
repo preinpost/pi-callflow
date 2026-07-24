@@ -31219,7 +31219,7 @@ var CallflowController = class {
 
 // src/core/mermaid.ts
 function escapeMermaidText(value) {
-  return value.replace(/"/g, "#quot;").replace(/((?:&#?|#)[a-zA-Z0-9]+;)|;/g, (_match, entity) => entity ?? "#59;");
+  return value.replace(/\r?\n/g, "<br/>").replace(/"/g, "#quot;").replace(/((?:&#?|#)[a-zA-Z0-9]+;)|;/g, (_match, entity) => entity ?? "#59;");
 }
 function mermaidQuoted(value) {
   return `"${escapeMermaidText(value)}"`;
@@ -31397,19 +31397,73 @@ function sanitizeMermaidFlowchart(flowchart) {
     return line;
   }).join("\n");
 }
+var GROUP_KEYWORDS = /* @__PURE__ */ new Set(["alt", "opt", "loop", "par", "rect"]);
+function coerceGroupItem(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw;
+  if (r.type === "message" && typeof r.from === "string" && typeof r.to === "string") {
+    return { type: "message", from: r.from, to: r.to, text: String(r.text ?? "") };
+  }
+  if (r.type === "note" && Array.isArray(r.participants)) {
+    const position = r.position === "left" || r.position === "right" ? r.position : "over";
+    return { type: "note", position, participants: r.participants.map(String), text: String(r.text ?? "") };
+  }
+  if (r.type === "else") {
+    return { type: "else", label: r.label != null ? String(r.label) : void 0 };
+  }
+  return null;
+}
+function coerceSequenceGroups(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  let current = null;
+  for (const entry of raw) {
+    const keyword = entry && typeof entry === "object" ? entry.keyword : void 0;
+    if (typeof keyword === "string" && GROUP_KEYWORDS.has(keyword)) {
+      const g = entry;
+      const items = Array.isArray(g.items) ? g.items.map(coerceGroupItem).filter((x) => x != null) : [];
+      current = { keyword, label: g.label != null ? String(g.label) : void 0, items };
+      out.push(current);
+    } else {
+      const item = coerceGroupItem(entry);
+      if (item) {
+        if (!current) {
+          current = { keyword: "alt", items: [] };
+          out.push(current);
+        }
+        current.items.push(item);
+      }
+    }
+  }
+  return out.filter((g) => g.items.length > 0);
+}
 function renderSequence(input) {
   if (input.sequence) return sanitizeMermaidSequence(input.sequence);
-  return buildSequenceDiagram(input);
+  const groups = coerceSequenceGroups(input.groups);
+  try {
+    return buildSequenceDiagram({
+      participants: input.participants,
+      steps: input.steps,
+      notes: input.notes,
+      groups
+    });
+  } catch {
+    return buildSequenceDiagram({ participants: input.participants, steps: input.steps });
+  }
 }
 function renderFlowchart(input) {
   if (input.flowchart) return sanitizeMermaidFlowchart(input.flowchart);
   if (!input.nodes || input.nodes.length === 0) return void 0;
-  return buildFlowchart({
-    direction: input.direction,
-    nodes: input.nodes,
-    edges: input.edges ?? [],
-    subgraphs: input.subgraphs
-  });
+  try {
+    return buildFlowchart({
+      direction: input.direction,
+      nodes: input.nodes,
+      edges: input.edges ?? [],
+      subgraphs: input.subgraphs
+    });
+  } catch {
+    return void 0;
+  }
 }
 
 // src/mcp/server.ts
@@ -31508,7 +31562,7 @@ var inputSchema = {
   sequence: external_exports.string().optional().describe("DEPRECATED. Provide 'participants' and 'steps' instead. Optional raw Mermaid 'sequenceDiagram' override."),
   participants: external_exports.array(ParticipantSchema).optional().describe("Participant aliases (id + display label)."),
   notes: external_exports.array(NoteSchema).optional().describe("Stand-alone Mermaid notes."),
-  groups: external_exports.array(GroupSchema).optional().describe("Grouping blocks: alt/opt/loop/par/rect."),
+  groups: external_exports.array(external_exports.union([GroupSchema, GroupItemSchema])).optional().describe("Grouping blocks: alt/opt/loop/par/rect. A stray top-level 'else'/message is tolerated and absorbed into the preceding group."),
   flowchart: external_exports.string().optional().describe("DEPRECATED. Provide 'flowchartNodes'/'flowchartEdges' instead. Optional raw Mermaid 'flowchart TD' override."),
   flowchartDirection: directionSchema.optional().describe("Flowchart direction (default TD)."),
   flowchartNodes: external_exports.array(FlowchartNodeSchema).optional().describe("Flowchart nodes."),
