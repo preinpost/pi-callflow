@@ -25,7 +25,7 @@
     "build:mcp": "node scripts/build-mcp.mjs",
     "check": "tsc --noEmit",
     "build": "npm run build:web && npm run build:mcp && npm run check",
-    "prepare": "npm run build:web && npm run build:mcp",
+    "prepublishOnly": "npm run build:web && npm run build:mcp",
     "smoke": "node scripts/smoke.mjs",
     "smoke:mcp": "node scripts/smoke-mcp.mjs"
   },
@@ -36,6 +36,11 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "*",
