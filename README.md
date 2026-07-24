@@ -164,35 +164,54 @@ export CALLFLOW_OPEN_CMD='code -g {file}:{line}'        # VS Code
 
 ## Linux / WSL
 
-The native Glimpse window needs a GUI. On plain Linux, install the GTK4 / WebKitGTK dev
-packages so the native window can build and launch; otherwise the viewer falls back to your
-system browser via `xdg-open`.
+The viewer is a [Glimpse](https://github.com/HazAT/glimpse) window. On Linux, Glimpse has two
+backends and **auto-selects** between them:
 
-**WSL (WSL2 on Windows)** is a common gotcha: there's usually no working `xdg-open`, so the
-fallback silently does nothing and *no window appears*. callflow now detects WSL and opens the
-diagram in your **Windows default browser** automatically, using either:
+- **Native** (Rust + GTK4 + WebKitGTK) — fast, but needs those dev packages installed.
+- **Chromium (CDP)** — **zero-compile**; it just needs a Chromium-based browser (Chrome,
+  Chromium, Brave, Edge) on the system. If the native binary isn't present, Glimpse falls back
+  to this automatically. Force it with `GLIMPSE_BACKEND=chromium`.
 
-- [`wslview`](https://github.com/wslutilities/wslu) if installed (recommended), or
-- `explorer.exe` with a translated Windows path as a fallback.
+Either backend renders the **full interactive window** (clickable steps → editor jump). What
+both need is a GUI/display.
 
-So the smoothest setup on WSL is to install `wslu`:
+### WSL2 — recommended: a real interactive window via WSLg
 
-```sh
-sudo apt install wslu          # Debian/Ubuntu — provides wslview
-```
-
-Want the *real native window* on WSL instead of the browser? You need **WSLg** (bundled with
-Windows 11 and recent Windows 10) plus the GTK4/WebKit toolchain so glimpseui can build its
-native binary. If that's not available, the Windows-browser fallback above is the practical
-path.
-
-Either way, you can force a specific opener with an env override (handy for a non-default
-browser, or any custom launcher). Use `{file}` for the HTML path (it's appended if omitted):
+WSL2 on Windows 11 (and recent Windows 10) ships **WSLg**, which gives your Linux distro a
+working display. Two steps and you get the real Call Flow window:
 
 ```sh
-export CALLFLOW_BROWSER='wslview {file}'
-export CALLFLOW_BROWSER='/mnt/c/Program Files/Google/Chrome/Application/chrome.exe'
+# 1) confirm WSLg is providing a display (should print something, e.g. :0 or wayland-0)
+echo "$DISPLAY $WAYLAND_DISPLAY"
+
+# 2) install a Chromium-based browser inside WSL so Glimpse's Chromium backend can render
+sudo apt install chromium-browser        # Debian/Ubuntu (or install Google Chrome)
 ```
+
+That's it — Glimpse detects no native binary, uses the Chromium backend, and the window opens
+under WSLg with full interactivity. (Prefer the native backend? Install the GTK4/WebKitGTK dev
+packages from the Build-from-source notes instead; either works.)
+
+### WSL2 without a display — degraded fallback to the Windows browser
+
+If WSLg isn't available (or you don't want a Linux GUI), Glimpse can't open a window, so
+callflow falls back to writing the diagram to a temp HTML file and opening it in your
+**Windows** browser. Plain `xdg-open` usually does nothing on WSL, so callflow detects WSL and
+uses [`wslview`](https://github.com/wslutilities/wslu) (or `explorer.exe` with a translated
+path). Install `wslu` so this works cleanly:
+
+```sh
+sudo apt install wslu          # provides wslview
+```
+
+This fallback is **static** — you see the diagram, but clicking a step to jump to your editor
+won't work (there's no live channel back to WSL). Use the WSLg path above for the full
+experience.
+
+> Advanced: `CALLFLOW_BROWSER` overrides the fallback opener (use `{file}` for the HTML path).
+> It's most useful on plain Linux — e.g. `CALLFLOW_BROWSER='firefox {file}'`. On WSL, pointing
+> it at a Windows `.exe` needs a Windows path (`wslpath -w`), which is exactly what the
+> built-in `wslview`/`explorer.exe` fallback already handles for you.
 
 ## Offline / closed networks
 
