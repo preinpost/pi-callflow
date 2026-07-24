@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/preinpost/pi-callflow/compare/v0.2.0...v0.2.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **core:** tolerate loose groups + newlines so validation never hard-fails ([5c9c0a6](https://github.com/preinpost/pi-callflow/commit/5c9c0a6176e8e4a56a18dbbed98bd61e46e0e184))
+
 # [0.2.0](https://github.com/preinpost/pi-callflow/compare/v0.1.7...v0.2.0) (2026-07-24)
 
 
