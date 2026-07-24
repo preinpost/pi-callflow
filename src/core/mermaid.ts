@@ -101,7 +101,8 @@ function mermaidQuoted(value: string): string {
 // ---------------------------------------------------------------------------
 
 function arrowFor(kind: "request" | "response" | undefined): string {
-  return kind === "response" ? "-->>" : ">>";
+  // request: solid arrow (->>), response: dotted arrow (-->>)
+  return kind === "response" ? "-->>" : "->>";
 }
 
 function renderMessageLine(
@@ -111,7 +112,7 @@ function renderMessageLine(
   kind?: "request" | "response",
   indent = "    ",
 ): string {
-  return `${indent}${from}-${arrowFor(kind)}${to}: ${mermaidQuoted(text)}`;
+  return `${indent}${from}${arrowFor(kind)}${to}: ${mermaidQuoted(text)}`;
 }
 
 function renderNoteLine(note: SequenceNote, indent = "    "): string {
@@ -249,4 +250,115 @@ export function buildFlowchart(input: FlowchartInput): string {
   for (const e of input.edges) lines.push(`    ${renderFlowchartEdge(e)}`);
   for (const s of input.subgraphs ?? []) lines.push(renderFlowchartSubgraph(s));
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Legacy raw-string sanitizers (used only when a caller supplies raw Mermaid)
+// ---------------------------------------------------------------------------
+
+const MERMAID_SPECIAL_RE = /[()<>;]/;
+
+function leadingSpaces(line: string): string {
+  const match = line.match(/^\s*/);
+  return match ? match[0] : "";
+}
+
+function needsMermaidQuote(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return false;
+  return MERMAID_SPECIAL_RE.test(value);
+}
+
+function mermaidQuoteRaw(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed;
+  return `"${escapeMermaidText(value)}"`;
+}
+
+/** Best-effort escaping for legacy raw Mermaid sequenceDiagram input. */
+export function sanitizeMermaidSequence(sequence: string): string {
+  return sequence
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+
+      const participantMatch = trimmed.match(/^participant\s+(\S+)\s+as\s+(.+)$/i);
+      if (participantMatch) {
+        const id = participantMatch[1];
+        const label = participantMatch[2].trim();
+        if (needsMermaidQuote(label)) {
+          return `${leadingSpaces(line)}participant ${id} as ${mermaidQuoteRaw(label)}`;
+        }
+        return line;
+      }
+
+      const msgMatch = trimmed.match(/^(\S+?)([-.=~]+(?:>>?>?)?[xox]?)(\S+?)\s*:\s+(.*)$/);
+      if (msgMatch) {
+        const from = msgMatch[1];
+        const arrow = msgMatch[2];
+        const to = msgMatch[3];
+        const text = msgMatch[4].trim();
+        if (needsMermaidQuote(text)) {
+          return `${leadingSpaces(line)}${from}${arrow}${to}: ${mermaidQuoteRaw(text)}`;
+        }
+      }
+
+      return line;
+    })
+    .join("\n");
+}
+
+/** Best-effort escaping for legacy raw Mermaid flowchart input. */
+export function sanitizeMermaidFlowchart(flowchart: string): string {
+  return flowchart
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      const nodeMatch = trimmed.match(/^(\S+)\s*([[({]+)\s*([^\]\)}]+)\s*([\])}]+)$/);
+      if (nodeMatch) {
+        const id = nodeMatch[1];
+        const open = nodeMatch[2];
+        const label = nodeMatch[3].trim();
+        const close = nodeMatch[4];
+        if (!/^".*"$/.test(label)) {
+          return `${leadingSpaces(line)}${id}${open}${mermaidQuoteRaw(label)}${close}`;
+        }
+      }
+      return line;
+    })
+    .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// High-level render helpers: raw override wins, else build from structure
+// ---------------------------------------------------------------------------
+
+export interface RenderSequenceInput extends SequenceFromStepsInput {
+  /** Raw Mermaid override; sanitized, not used verbatim. */
+  sequence?: string;
+}
+
+export function renderSequence(input: RenderSequenceInput): string {
+  if (input.sequence) return sanitizeMermaidSequence(input.sequence);
+  return buildSequenceDiagram(input);
+}
+
+export interface RenderFlowchartInput {
+  /** Raw Mermaid override; sanitized, not used verbatim. */
+  flowchart?: string;
+  direction?: FlowchartInput["direction"];
+  nodes?: FlowchartNode[];
+  edges?: FlowchartEdge[];
+  subgraphs?: FlowchartSubgraph[];
+}
+
+export function renderFlowchart(input: RenderFlowchartInput): string | undefined {
+  if (input.flowchart) return sanitizeMermaidFlowchart(input.flowchart);
+  if (!input.nodes || input.nodes.length === 0) return undefined;
+  return buildFlowchart({
+    direction: input.direction,
+    nodes: input.nodes,
+    edges: input.edges ?? [],
+    subgraphs: input.subgraphs,
+  });
 }

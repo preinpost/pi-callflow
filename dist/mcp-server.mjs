@@ -31217,9 +31217,204 @@ var CallflowController = class {
   }
 };
 
+// src/core/mermaid.ts
+function escapeMermaidText(value) {
+  return value.replace(/"/g, "#quot;").replace(/(?<!&#?\d+);/g, "#59;");
+}
+function mermaidQuoted(value) {
+  return `"${escapeMermaidText(value)}"`;
+}
+function arrowFor(kind) {
+  return kind === "response" ? "-->>" : "->>";
+}
+function renderMessageLine(from, to, text, kind, indent = "    ") {
+  return `${indent}${from}${arrowFor(kind)}${to}: ${mermaidQuoted(text)}`;
+}
+function renderNoteLine(note, indent = "    ") {
+  const target = note.position === "over" ? note.participants.join(",") : note.participants[0];
+  return `${indent}Note ${note.position} ${target}: ${mermaidQuoted(note.text)}`;
+}
+function renderGroupItem(item, indent = "        ") {
+  if (item.type === "message") {
+    return renderMessageLine(item.from, item.to, item.text, void 0, indent);
+  }
+  if (item.type === "note") {
+    return renderNoteLine(item, indent);
+  }
+  return `    else ${item.label ? mermaidQuoted(item.label) : ""}`;
+}
+function buildSequenceDiagram(input) {
+  const lines = ["sequenceDiagram"];
+  const usedIds = /* @__PURE__ */ new Set();
+  for (const s of input.steps) {
+    usedIds.add(s.from);
+    usedIds.add(s.to);
+  }
+  for (const g of input.groups ?? []) {
+    for (const item of g.items) {
+      if (item.type === "message") {
+        usedIds.add(item.from);
+        usedIds.add(item.to);
+      } else if (item.type === "note") {
+        for (const p of item.participants) usedIds.add(p);
+      }
+    }
+  }
+  for (const n of input.notes ?? []) {
+    for (const p of n.participants) usedIds.add(p);
+  }
+  const participantMap = /* @__PURE__ */ new Map();
+  for (const p of input.participants ?? []) {
+    participantMap.set(p.id, p.label);
+    usedIds.add(p.id);
+  }
+  for (const id of usedIds) {
+    if (!participantMap.has(id)) participantMap.set(id, id);
+  }
+  const explicitIds = new Set(input.participants?.map((p) => p.id) ?? []);
+  const orderedIds = [
+    ...input.participants?.map((p) => p.id) ?? [],
+    ...Array.from(usedIds).filter((id) => !explicitIds.has(id)).sort()
+  ];
+  for (const id of orderedIds) {
+    const label = participantMap.get(id) ?? id;
+    lines.push(`    participant ${id} as ${mermaidQuoted(label)}`);
+  }
+  for (const s of input.steps) {
+    lines.push(renderMessageLine(s.from, s.to, s.call, s.kind));
+    if (s.note) {
+      lines.push(renderNoteLine({ position: "over", participants: [s.from, s.to], text: s.note }));
+    }
+  }
+  for (const n of input.notes ?? []) {
+    lines.push(renderNoteLine(n));
+  }
+  for (const g of input.groups ?? []) {
+    lines.push(`    ${g.keyword} ${g.label ? mermaidQuoted(g.label) : ""}`);
+    for (const item of g.items) {
+      lines.push(renderGroupItem(item));
+    }
+    lines.push("    end");
+  }
+  return lines.join("\n");
+}
+function renderFlowchartNode(node) {
+  const label = mermaidQuoted(node.label);
+  switch (node.shape) {
+    case "round":
+      return `${node.id}(${label})`;
+    case "stadium":
+      return `${node.id}([${label}])`;
+    case "subprocess":
+      return `${node.id}[[${label}]]`;
+    case "cylinder":
+      return `${node.id}[(${label})]`;
+    case "circle":
+      return `${node.id}((${label}))`;
+    case "diamond":
+      return `${node.id}{${label}}`;
+    case "default":
+    default:
+      return `${node.id}[${label}]`;
+  }
+}
+function renderFlowchartEdge(edge) {
+  if (edge.label) {
+    return `${edge.from} -->|${mermaidQuoted(edge.label)}| ${edge.to}`;
+  }
+  return `${edge.from} --> ${edge.to}`;
+}
+function renderFlowchartSubgraph(sub, indent = "    ") {
+  const lines = [`${indent}subgraph ${mermaidQuoted(sub.label)}`];
+  const inner = `${indent}    `;
+  if (sub.direction) lines.push(`${inner}direction ${sub.direction}`);
+  for (const n of sub.nodes) lines.push(`${inner}${renderFlowchartNode(n)}`);
+  for (const e of sub.edges) lines.push(`${inner}${renderFlowchartEdge(e)}`);
+  lines.push(`${indent}end`);
+  return lines.join("\n");
+}
+function buildFlowchart(input) {
+  const direction = input.direction ?? "TD";
+  const lines = [`flowchart ${direction}`];
+  for (const n of input.nodes) lines.push(`    ${renderFlowchartNode(n)}`);
+  for (const e of input.edges) lines.push(`    ${renderFlowchartEdge(e)}`);
+  for (const s of input.subgraphs ?? []) lines.push(renderFlowchartSubgraph(s));
+  return lines.join("\n");
+}
+var MERMAID_SPECIAL_RE = /[()<>;]/;
+function leadingSpaces(line) {
+  const match = line.match(/^\s*/);
+  return match ? match[0] : "";
+}
+function needsMermaidQuote(value) {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return false;
+  return MERMAID_SPECIAL_RE.test(value);
+}
+function mermaidQuoteRaw(value) {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed;
+  return `"${escapeMermaidText(value)}"`;
+}
+function sanitizeMermaidSequence(sequence) {
+  return sequence.split("\n").map((line) => {
+    const trimmed = line.trim();
+    const participantMatch = trimmed.match(/^participant\s+(\S+)\s+as\s+(.+)$/i);
+    if (participantMatch) {
+      const id = participantMatch[1];
+      const label = participantMatch[2].trim();
+      if (needsMermaidQuote(label)) {
+        return `${leadingSpaces(line)}participant ${id} as ${mermaidQuoteRaw(label)}`;
+      }
+      return line;
+    }
+    const msgMatch = trimmed.match(/^(\S+?)([-.=~]+(?:>>?>?)?[xox]?)(\S+?)\s*:\s+(.*)$/);
+    if (msgMatch) {
+      const from = msgMatch[1];
+      const arrow = msgMatch[2];
+      const to = msgMatch[3];
+      const text = msgMatch[4].trim();
+      if (needsMermaidQuote(text)) {
+        return `${leadingSpaces(line)}${from}${arrow}${to}: ${mermaidQuoteRaw(text)}`;
+      }
+    }
+    return line;
+  }).join("\n");
+}
+function sanitizeMermaidFlowchart(flowchart) {
+  return flowchart.split("\n").map((line) => {
+    const trimmed = line.trim();
+    const nodeMatch = trimmed.match(/^(\S+)\s*([[({]+)\s*([^\]\)}]+)\s*([\])}]+)$/);
+    if (nodeMatch) {
+      const id = nodeMatch[1];
+      const open2 = nodeMatch[2];
+      const label = nodeMatch[3].trim();
+      const close = nodeMatch[4];
+      if (!/^".*"$/.test(label)) {
+        return `${leadingSpaces(line)}${id}${open2}${mermaidQuoteRaw(label)}${close}`;
+      }
+    }
+    return line;
+  }).join("\n");
+}
+function renderSequence(input) {
+  if (input.sequence) return sanitizeMermaidSequence(input.sequence);
+  return buildSequenceDiagram(input);
+}
+function renderFlowchart(input) {
+  if (input.flowchart) return sanitizeMermaidFlowchart(input.flowchart);
+  if (!input.nodes || input.nodes.length === 0) return void 0;
+  return buildFlowchart({
+    direction: input.direction,
+    nodes: input.nodes,
+    edges: input.edges ?? [],
+    subgraphs: input.subgraphs
+  });
+}
+
 // src/mcp/server.ts
 var PKG_NAME = true ? "pi-callflow" : "pi-callflow";
-var PKG_VERSION = true ? "0.1.4" : "0.0.0";
+var PKG_VERSION = true ? "0.1.7" : "0.0.0";
 var notify = (message, level) => {
   process.stderr.write(`[callflow:${level}] ${message}
 `);
@@ -31262,28 +31457,87 @@ var getController = () => {
   }
   return controller;
 };
-var StepShape = {
-  from: external_exports.string().describe("Caller participant (class/component/actor)"),
-  to: external_exports.string().describe("Callee participant"),
+var positionSchema = external_exports.enum(["left", "right", "over"]);
+var StepSchema = external_exports.object({
+  from: external_exports.string().describe("Caller participant id (must match a participant id)"),
+  to: external_exports.string().describe("Callee participant id (must match a participant id)"),
   call: external_exports.string().describe("Method/endpoint invoked, e.g. grant()"),
   file: external_exports.string().describe("Source file path (repo-relative), REQUIRED for grounding"),
   line: external_exports.number().describe("1-based line number where this call originates, REQUIRED"),
-  note: external_exports.string().optional().describe("Short clarification (branch/condition)")
-};
+  note: external_exports.string().optional().describe("Short clarification rendered as a Note over the two participants"),
+  kind: external_exports.enum(["request", "response"]).optional().describe("Arrow style: request (->>) or response (-->>). Defaults to request.")
+});
+var ParticipantSchema = external_exports.object({
+  id: external_exports.string().describe("Short participant id used in step from/to fields"),
+  label: external_exports.string().describe("Display label, may contain file paths or <br/>")
+});
+var NoteSchema = external_exports.object({
+  position: positionSchema,
+  participants: external_exports.array(external_exports.string()),
+  text: external_exports.string()
+});
+var GroupItemSchema = external_exports.union([
+  external_exports.object({ type: external_exports.literal("message"), from: external_exports.string(), to: external_exports.string(), text: external_exports.string() }),
+  external_exports.object({ type: external_exports.literal("note"), position: positionSchema, participants: external_exports.array(external_exports.string()), text: external_exports.string() }),
+  external_exports.object({ type: external_exports.literal("else"), label: external_exports.string().optional() })
+]);
+var GroupSchema = external_exports.object({
+  keyword: external_exports.enum(["alt", "opt", "loop", "par", "rect"]),
+  label: external_exports.string().optional(),
+  items: external_exports.array(GroupItemSchema)
+});
+var directionSchema = external_exports.enum(["TB", "TD", "LR", "RL"]);
+var FlowchartNodeSchema = external_exports.object({
+  id: external_exports.string().describe("Short node id used in edges"),
+  label: external_exports.string().describe("Display label"),
+  shape: external_exports.enum(["default", "round", "stadium", "subprocess", "cylinder", "circle", "diamond"]).optional()
+});
+var FlowchartEdgeSchema = external_exports.object({
+  from: external_exports.string(),
+  to: external_exports.string(),
+  label: external_exports.string().optional()
+});
+var FlowchartSubgraphSchema = external_exports.object({
+  label: external_exports.string(),
+  direction: directionSchema.optional(),
+  nodes: external_exports.array(FlowchartNodeSchema),
+  edges: external_exports.array(FlowchartEdgeSchema)
+});
 var inputSchema = {
   title: external_exports.string().describe("Short title, e.g. 'Login \u2192 OTP verification flow'"),
-  sequence: external_exports.string().describe("REQUIRED. Mermaid 'sequenceDiagram' source showing call ordering. Must reflect the real code you inspected."),
-  flowchart: external_exports.string().optional().describe("Mermaid 'flowchart TD' source for branch/decision logic. Provide it whenever the flow has meaningful branching; it renders in a separate Flowchart tab next to the sequence."),
-  steps: external_exports.array(external_exports.object(StepShape)).describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
-  notes: external_exports.string().optional().describe("Optional context: branches, config keys, edge cases")
+  sequence: external_exports.string().optional().describe("DEPRECATED. Provide 'participants' and 'steps' instead. Optional raw Mermaid 'sequenceDiagram' override."),
+  participants: external_exports.array(ParticipantSchema).optional().describe("Participant aliases (id + display label)."),
+  notes: external_exports.array(NoteSchema).optional().describe("Stand-alone Mermaid notes."),
+  groups: external_exports.array(GroupSchema).optional().describe("Grouping blocks: alt/opt/loop/par/rect."),
+  flowchart: external_exports.string().optional().describe("DEPRECATED. Provide 'flowchartNodes'/'flowchartEdges' instead. Optional raw Mermaid 'flowchart TD' override."),
+  flowchartDirection: directionSchema.optional().describe("Flowchart direction (default TD)."),
+  flowchartNodes: external_exports.array(FlowchartNodeSchema).optional().describe("Flowchart nodes."),
+  flowchartEdges: external_exports.array(FlowchartEdgeSchema).optional().describe("Flowchart edges."),
+  flowchartSubgraphs: external_exports.array(FlowchartSubgraphSchema).optional().describe("Flowchart subgraphs."),
+  steps: external_exports.array(StepSchema).describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
+  contextNotes: external_exports.string().optional().describe("Optional context: branches, config keys, edge cases")
 };
 function toDiagram(args) {
+  const sequence = renderSequence({
+    sequence: args.sequence,
+    participants: args.participants,
+    steps: args.steps,
+    notes: args.notes,
+    groups: args.groups
+  });
+  const flowchart = renderFlowchart({
+    flowchart: args.flowchart,
+    direction: args.flowchartDirection,
+    nodes: args.flowchartNodes,
+    edges: args.flowchartEdges,
+    subgraphs: args.flowchartSubgraphs
+  });
   return {
     title: args.title,
-    sequence: args.sequence,
-    flowchart: args.flowchart,
+    sequence,
+    flowchart,
     steps: args.steps.map((s, i) => ({ ...s, index: i + 1 })),
-    notes: args.notes,
+    notes: args.contextNotes,
     generatedAt: Date.now()
   };
 }
@@ -31293,7 +31547,7 @@ async function main() {
     "render_call_diagram",
     {
       title: "Render call diagram",
-      description: "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a request/endpoint/feature flows through the code. ALWAYS fill 'sequence' with a Mermaid 'sequenceDiagram' (call ordering) \u2014 it is the default view. ALSO fill 'flowchart' with a Mermaid 'flowchart TD' whenever the flow has branching/decisions \u2014 it renders in a separate Flowchart tab. Inspect the actual code first, then call this with a diagram whose every step cites a real file:line.",
+      description: "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a request/endpoint/feature flows through the code. Provide 'participants' and 'steps'; the sequence diagram is generated automatically. For branching/decisions, provide 'flowchartNodes'/'flowchartEdges'. Only use raw 'sequence'/'flowchart' as overrides. Inspect the actual code first; every step must cite a real file:line.",
       inputSchema
     },
     async (args) => {

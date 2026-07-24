@@ -2,6 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { CallflowController, type Notify } from "../core/controller.js";
+import {
+  renderFlowchart,
+  renderSequence,
+  type FlowchartNode,
+  type FlowchartSubgraph,
+} from "../core/mermaid.js";
 import type { CallStep, Diagram } from "../core/types.js";
 
 // Injected at build time from package.json (see scripts/build-mcp.mjs).
@@ -61,43 +67,121 @@ const getController = (): CallflowController => {
   return controller;
 };
 
-const StepShape = {
-  from: z.string().describe("Caller participant (class/component/actor)"),
-  to: z.string().describe("Callee participant"),
+const positionSchema = z.enum(["left", "right", "over"]);
+
+const StepSchema = z.object({
+  from: z.string().describe("Caller participant id (must match a participant id)"),
+  to: z.string().describe("Callee participant id (must match a participant id)"),
   call: z.string().describe("Method/endpoint invoked, e.g. grant()"),
   file: z.string().describe("Source file path (repo-relative), REQUIRED for grounding"),
   line: z.number().describe("1-based line number where this call originates, REQUIRED"),
-  note: z.string().optional().describe("Short clarification (branch/condition)"),
-};
+  note: z.string().optional().describe("Short clarification rendered as a Note over the two participants"),
+  kind: z.enum(["request", "response"]).optional().describe("Arrow style: request (->>) or response (-->>). Defaults to request."),
+});
+
+const ParticipantSchema = z.object({
+  id: z.string().describe("Short participant id used in step from/to fields"),
+  label: z.string().describe("Display label, may contain file paths or <br/>"),
+});
+
+const NoteSchema = z.object({
+  position: positionSchema,
+  participants: z.array(z.string()),
+  text: z.string(),
+});
+
+const GroupItemSchema = z.union([
+  z.object({ type: z.literal("message"), from: z.string(), to: z.string(), text: z.string() }),
+  z.object({ type: z.literal("note"), position: positionSchema, participants: z.array(z.string()), text: z.string() }),
+  z.object({ type: z.literal("else"), label: z.string().optional() }),
+]);
+
+const GroupSchema = z.object({
+  keyword: z.enum(["alt", "opt", "loop", "par", "rect"]),
+  label: z.string().optional(),
+  items: z.array(GroupItemSchema),
+});
+
+const directionSchema = z.enum(["TB", "TD", "LR", "RL"]);
+
+const FlowchartNodeSchema = z.object({
+  id: z.string().describe("Short node id used in edges"),
+  label: z.string().describe("Display label"),
+  shape: z.enum(["default", "round", "stadium", "subprocess", "cylinder", "circle", "diamond"]).optional(),
+});
+
+const FlowchartEdgeSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  label: z.string().optional(),
+});
+
+const FlowchartSubgraphSchema = z.object({
+  label: z.string(),
+  direction: directionSchema.optional(),
+  nodes: z.array(FlowchartNodeSchema),
+  edges: z.array(FlowchartEdgeSchema),
+});
 
 const inputSchema = {
   title: z.string().describe("Short title, e.g. 'Login → OTP verification flow'"),
   sequence: z
     .string()
-    .describe("REQUIRED. Mermaid 'sequenceDiagram' source showing call ordering. Must reflect the real code you inspected."),
+    .optional()
+    .describe("DEPRECATED. Provide 'participants' and 'steps' instead. Optional raw Mermaid 'sequenceDiagram' override."),
+  participants: z.array(ParticipantSchema).optional().describe("Participant aliases (id + display label)."),
+  notes: z.array(NoteSchema).optional().describe("Stand-alone Mermaid notes."),
+  groups: z.array(GroupSchema).optional().describe("Grouping blocks: alt/opt/loop/par/rect."),
   flowchart: z
     .string()
     .optional()
-    .describe("Mermaid 'flowchart TD' source for branch/decision logic. Provide it whenever the flow has meaningful branching; it renders in a separate Flowchart tab next to the sequence."),
+    .describe("DEPRECATED. Provide 'flowchartNodes'/'flowchartEdges' instead. Optional raw Mermaid 'flowchart TD' override."),
+  flowchartDirection: directionSchema.optional().describe("Flowchart direction (default TD)."),
+  flowchartNodes: z.array(FlowchartNodeSchema).optional().describe("Flowchart nodes."),
+  flowchartEdges: z.array(FlowchartEdgeSchema).optional().describe("Flowchart edges."),
+  flowchartSubgraphs: z.array(FlowchartSubgraphSchema).optional().describe("Flowchart subgraphs."),
   steps: z
-    .array(z.object(StepShape))
+    .array(StepSchema)
     .describe("Ordered call steps. EVERY step must carry a real file:line you actually read. Do not fabricate sources."),
-  notes: z.string().optional().describe("Optional context: branches, config keys, edge cases"),
+  contextNotes: z.string().optional().describe("Optional context: branches, config keys, edge cases"),
 };
 
-function toDiagram(args: {
+type RenderArgs = {
   title: string;
-  sequence: string;
+  sequence?: string;
+  participants?: Array<{ id: string; label: string }>;
+  notes?: Array<{ position: "left" | "right" | "over"; participants: string[]; text: string }>;
+  groups?: Parameters<typeof renderSequence>[0]["groups"];
   flowchart?: string;
+  flowchartDirection?: "TB" | "TD" | "LR" | "RL";
+  flowchartNodes?: FlowchartNode[];
+  flowchartEdges?: Array<{ from: string; to: string; label?: string }>;
+  flowchartSubgraphs?: FlowchartSubgraph[];
   steps: Array<Omit<CallStep, "index">>;
-  notes?: string;
-}): Diagram {
+  contextNotes?: string;
+};
+
+function toDiagram(args: RenderArgs): Diagram {
+  const sequence = renderSequence({
+    sequence: args.sequence,
+    participants: args.participants,
+    steps: args.steps,
+    notes: args.notes,
+    groups: args.groups,
+  });
+  const flowchart = renderFlowchart({
+    flowchart: args.flowchart,
+    direction: args.flowchartDirection,
+    nodes: args.flowchartNodes,
+    edges: args.flowchartEdges,
+    subgraphs: args.flowchartSubgraphs,
+  });
   return {
     title: args.title,
-    sequence: args.sequence,
-    flowchart: args.flowchart,
+    sequence,
+    flowchart,
     steps: args.steps.map((s, i) => ({ ...s, index: i + 1 })),
-    notes: args.notes,
+    notes: args.contextNotes,
     generatedAt: Date.now(),
   };
 }
@@ -111,14 +195,13 @@ async function main(): Promise<void> {
       title: "Render call diagram",
       description:
         "Render a call-structure diagram in a native Call Flow window. Use when the user asks to see how a " +
-        "request/endpoint/feature flows through the code. ALWAYS fill 'sequence' with a Mermaid 'sequenceDiagram' " +
-        "(call ordering) — it is the default view. ALSO fill 'flowchart' with a Mermaid 'flowchart TD' whenever the " +
-        "flow has branching/decisions — it renders in a separate Flowchart tab. Inspect the actual code first, then " +
-        "call this with a diagram whose every step cites a real file:line.",
+        "request/endpoint/feature flows through the code. Provide 'participants' and 'steps'; the sequence diagram " +
+        "is generated automatically. For branching/decisions, provide 'flowchartNodes'/'flowchartEdges'. Only use raw " +
+        "'sequence'/'flowchart' as overrides. Inspect the actual code first; every step must cite a real file:line.",
       inputSchema,
     },
     async (args) => {
-      const diagram = toDiagram(args);
+      const diagram = toDiagram(args as RenderArgs);
       try {
         getController().render(diagram);
       } catch (error) {

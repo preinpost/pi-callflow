@@ -1,82 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { CallflowController, type Notify } from "../core/controller.js";
-import {
-  buildFlowchart,
-  buildSequenceDiagram,
-  type FlowchartNode,
-  type FlowchartSubgraph,
-} from "../core/mermaid.js";
+import { renderFlowchart, renderSequence } from "../core/mermaid.js";
 import type { CallStep, Diagram } from "../core/types.js";
-
-const MERMAID_SPECIAL_RE = /[()<>;]/;
-
-function leadingSpaces(line: string): string {
-  const match = line.match(/^\s*/);
-  return match ? match[0] : "";
-}
-
-function needsMermaidQuote(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return false;
-  return MERMAID_SPECIAL_RE.test(value);
-}
-
-function escapeMermaidSemicolons(value: string): string {
-  // Mermaid uses ';' as a statement separator in sequence messages, even inside quoted text.
-  // Use the Mermaid HTML-entity form '#59;' for a literal semicolon.
-  // Avoid double-escaping an already-formed entity like '#59;' or '&#59;'.
-  return value.replace(/(?<!&#?\d+);/g, "#59;");
-}
-
-function mermaidQuote(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed;
-  // Escape inner double quotes and semicolons so they do not break the quoted Mermaid string.
-  const escaped = value
-    .replace(/"/g, "#quot;")
-    .replace(/(?<!&#?\d+);/g, "#59;");
-  return `"${escaped}"`;
-}
-
-/** Make a Mermaid sequenceDiagram source safe for the parser.
- *  Participant aliases and message texts that contain parentheses, angle brackets,
- *  or semicolons
- *  are wrapped in double quotes, which Mermaid treats as literal strings.
- */
-function sanitizeMermaidSequence(sequence: string): string {
-  return sequence
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-
-      // Participant aliases: participant ID as Label
-      const participantMatch = trimmed.match(/^participant\s+(\S+)\s+as\s+(.+)$/i);
-      if (participantMatch) {
-        const id = participantMatch[1];
-        const label = participantMatch[2].trim();
-        if (needsMermaidQuote(label)) {
-          return `${leadingSpaces(line)}participant ${id} as ${mermaidQuote(label)}`;
-        }
-        return line;
-      }
-
-      // Message lines: A->B: text
-      const msgMatch = trimmed.match(/^(\S+?)([-.=~]+(?:>>?>?)?[xox]?)(\S+?)\s*:\s+(.*)$/);
-      if (msgMatch) {
-        const from = msgMatch[1];
-        const arrow = msgMatch[2];
-        const to = msgMatch[3];
-        const text = msgMatch[4].trim();
-        if (needsMermaidQuote(text)) {
-          return `${leadingSpaces(line)}${from}${arrow}${to}: ${mermaidQuote(text)}`;
-        }
-      }
-
-      return line;
-    })
-    .join("\n");
-}
 
 const StepSchema = Type.Object({
   from: Type.String({ description: "Caller participant id (must match a participant id)" }),
@@ -213,70 +139,6 @@ function toDiagram(params: {
     notes: params.notes,
     generatedAt: Date.now(),
   };
-}
-
-function renderFlowchart(params: {
-  flowchart?: string;
-  direction?: "TB" | "TD" | "LR" | "RL";
-  nodes?: Array<{ id: string; label: string; shape?: string }>;
-  edges?: Array<{ from: string; to: string; label?: string }>;
-  subgraphs?: Array<{ label: string; direction?: "TB" | "TD" | "LR" | "RL"; nodes: any[]; edges: any[] }>;
-}): string | undefined {
-  if (params.flowchart) return sanitizeMermaidFlowchart(params.flowchart);
-  if (!params.nodes || params.nodes.length === 0) return undefined;
-  return buildFlowchart({
-    direction: params.direction,
-    nodes: params.nodes as FlowchartNode[],
-    edges: params.edges ?? [],
-    subgraphs: params.subgraphs as FlowchartSubgraph[] | undefined,
-  });
-}
-
-function sanitizeMermaidFlowchart(flowchart: string): string {
-  // Minimal sanitizer for legacy raw flowchart input.
-  // Node labels and edge labels are the most common failure points.
-  return flowchart
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-      // Node definition: id["label"] or id("label") etc. Ensure labels are quoted.
-      const nodeMatch = trimmed.match(/^(\S+)\s*([\[(\{]+)\s*([^\]\)\}]+)\s*([\]\)\}]+)$/);
-      if (nodeMatch) {
-        const id = nodeMatch[1];
-        const open = nodeMatch[2];
-        const label = nodeMatch[3].trim();
-        const close = nodeMatch[4];
-        if (!/^".*"$/.test(label)) {
-          return `${id}${open}${mermaidQuote(label)}${close}`;
-        }
-      }
-      return line;
-    })
-    .join("\n");
-}
-
-function renderSequence(params: {
-  sequence?: string;
-  participants?: Array<{ id: string; label: string }>;
-  steps: Array<{ from: string; to: string; call: string; note?: string; kind?: "request" | "response" }>;
-  notes?: Array<{ position: "left" | "right" | "over"; participants: string[]; text: string }>;
-  groups?: Array<{
-    keyword: "alt" | "opt" | "loop" | "par" | "rect";
-    label?: string;
-    items: Array<
-      | { type: "message"; from: string; to: string; text: string }
-      | { type: "note"; position: "left" | "right" | "over"; participants: string[]; text: string }
-      | { type: "else"; label?: string }
-    >;
-  }>;
-}): string {
-  if (params.sequence) return sanitizeMermaidSequence(params.sequence);
-  return buildSequenceDiagram({
-    participants: params.participants,
-    steps: params.steps,
-    notes: params.notes,
-    groups: params.groups,
-  });
 }
 
 function buildCallflowPrompt(question: string): string {
